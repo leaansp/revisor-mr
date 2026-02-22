@@ -349,3 +349,6 @@ if archivos:
             file_name="revision_apostillas.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
+st.markdown("---")
+st.markdown("<p style='text-align: center; color: gray; font-size: 12px;'>Desarrollado por Leandro Spinelli · Automatización de procesos documentales con IA · 2026</p>", unsafe_allow_html=True)
