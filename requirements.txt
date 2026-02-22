@@ -1,5 +1,5 @@
-anthropic
-pandas
-PyPDF2
-openpyxl
-streamlit
+anthropic>=0.83.0
+pandas>=2.0.0
+PyPDF2>=3.0.0
+openpyxl>=3.1.0
+streamlit>=1.40.0
