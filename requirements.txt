@@ -1,0 +1,5 @@
+anthropic
+pandas
+PyPDF2
+openpyxl
+streamlit
