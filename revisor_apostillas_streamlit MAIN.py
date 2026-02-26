@@ -3,7 +3,7 @@
 
 """
 REVISOR AUTOMÁTICO DE DOCUMENTOS PARA APOSTILLAS
-Versión Streamlit 3.1 – Fecha de hoy correcta + Observaciones mejoradas
+Versión Streamlit 3.2 – FIX: Reconoce correctamente fechas de 2026 como válidas
 """
 
 import os
@@ -123,38 +123,72 @@ def calcular_dias_desde_fecha(fecha_str):
 def analizar_con_claude(pdf_bytes):
     client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
     hoy = datetime.now().strftime('%d/%m/%Y')
+    anio_actual = datetime.now().year
+    mes_actual = datetime.now().strftime('%B')
 
-    prompt = f"""Analizá este documento y extraé información. La fecha de hoy es {hoy}. No consideres anómala ninguna fecha igual o anterior a hoy.
+    prompt = f"""Analizá este documento para apostilla en Cancillería Argentina.
 
-IMPORTANTE para calidad_imagen: usá SOLO estas palabras exactas:
-- "alta" o "clara" o "nítida" → si se lee bien
-- "baja" → si cuesta leer pero se puede
-- "borrosa" → si hay desenfoque notable
-- "ilegible" → si no se puede leer
+🗓️ CONTEXTO TEMPORAL CRÍTICO:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Fecha de HOY: {hoy}
+• Año actual: {anio_actual}
+• Mes actual: {mes_actual}
+• Estamos EN EL AÑO {anio_actual}
 
-Para multiples_firmas: marcá true SOLO si hay firmas de distintas autoridades que generan confusión real sobre cuál es la válida.
+⚠️ IMPORTANTE SOBRE FECHAS:
+• Fechas de {anio_actual} son ACTUALES y COMPLETAMENTE NORMALES
+• Un certificado emitido en febrero de {anio_actual} es RECIENTE (no es futuro)
+• Solo considerá problemática una fecha si es claramente posterior a {hoy}
+• Ejemplo: Un documento con fecha "15 de febrero del {anio_actual}" emitido hoy ({hoy}) tiene solo días de antigüedad y es PERFECTAMENTE VÁLIDO
 
-Para problemas_detectados: listá solo problemas concretos y reales. Si el documento está bien, dejá la lista vacía.
+NO marques como problema una fecha de {anio_actual} - es el año actual.
 
-Para observacion_redactada: escribí UNA sola oración clara y profesional que resuma el documento. Por ejemplo: "Acta de nacimiento emitida por el Registro Civil de Chaco el 10/02/2026, con firma digital de Carlos Zanier, en buen estado." No uses jerga técnica ni listes campos. Si hay un problema real, mencionalo al final de la oración.
+📋 INSTRUCCIONES DE EXTRACCIÓN:
 
-Para titular_documento: el nombre completo de la persona a quien pertenece el documento. Buscá el nombre en TODO el documento, incluso si está escrito a mano o en el cuerpo del acta. Ejemplos: en un acta de nacimiento es el nombre del bebé o persona nacida (ej: "Joel Lautaro Sueldo"); en un antecedente penal es el nombre del solicitante; en un título es el nombre del graduado. Este campo es OBLIGATORIO, nunca lo dejes vacío si el nombre aparece en algún lado del documento.
+Para calidad_imagen - usá SOLO estas palabras exactas:
+• "alta" o "clara" o "nítida" → si se lee bien
+• "baja" → si cuesta leer pero se puede
+• "borrosa" → si hay desenfoque notable
+• "ilegible" → si no se puede leer
 
-Campos a extraer (respondé SOLO JSON válido):
+Para multiples_firmas:
+• Marcá true SOLO si hay firmas de distintas autoridades que generan confusión real sobre cuál es la válida
+• Si hay una sola firma clara, marcá false
+
+Para problemas_detectados:
+• Listá SOLO problemas concretos y reales
+• NO incluyas la fecha como problema si es de {anio_actual}
+• Si el documento está bien, dejá la lista vacía []
+
+Para observacion_redactada:
+• Escribí UNA sola oración clara y profesional que resuma el documento
+• Ejemplo: "Certificado de antecedentes penales emitido el 15/02/{anio_actual} con firma digital de Juan Pérez, vigente."
+• NO uses jerga técnica ni listes campos
+• Si hay un problema REAL (no la fecha), mencionalo al final
+
+Para titular_documento:
+• El nombre completo de la persona a quien pertenece el documento
+• Buscá el nombre en TODO el documento, incluso manuscrito o en anotaciones marginales
+• En acta de nacimiento: nombre del nacido (ej: "Joel Lautaro Sueldo")
+• En antecedente penal: nombre del solicitante
+• En título: nombre del graduado
+• Campo OBLIGATORIO, nunca vacío si el nombre aparece
+
+Campos a extraer (JSON válido):
 {{
   "tipo_documento": string,
   "titular_documento": string,
-  "fecha_emision": string,
+  "fecha_emision": string (tal como aparece),
   "anio_documento": number,
   "es_pre_2012": boolean,
-  "firmantes_visibles": [lista de strings],
+  "firmantes_visibles": [strings],
   "cantidad_firmas_visibles": number,
   "multiples_firmas": boolean,
   "sello_ministerio_visible": boolean,
   "sello_claro": boolean,
   "calidad_imagen": "alta"|"clara"|"nítida"|"baja"|"borrosa"|"ilegible",
   "es_foto_celular": boolean,
-  "problemas_detectados": [lista de strings, vacía si no hay problemas],
+  "problemas_detectados": [strings vacía si todo OK],
   "observacion_redactada": string
 }}"""
 
@@ -189,53 +223,84 @@ def evaluar_documento(firma_info, analisis):
     if "antecedente" in tipo or "penal" in tipo:
         fecha = analisis.get('fecha_emision')
         if not fecha:
-            estado = "⚠️ REVISAR"; accion = "No se detectó fecha"
+            estado = "⚠️ REVISAR"
+            accion = "No se detectó fecha"
             problemas.append("No se pudo leer la fecha de emisión")
         else:
             dias = calcular_dias_desde_fecha(fecha)
+            
             if dias is None:
-                estado = "⚠️ REVISAR"; accion = "Fecha no interpretable"
+                estado = "⚠️ REVISAR"
+                accion = "Fecha no interpretable"
                 problemas.append(f"No se pudo interpretar la fecha: {fecha}")
+            
+            elif dias < 0:
+                # Fecha futura - muy raro pero posible si el reloj está mal
+                estado = "⚠️ REVISAR"
+                accion = "Fecha posterior a hoy"
+                problemas.append(f"Fecha futura detectada: {fecha} (verificar si es error de sistema)")
+            
             elif dias > 90:
-                estado = "❌ RECHAZAR"; accion = "Certificado vencido (>90 días)"
-                problemas.append(f"Vencido hace {dias} días")
+                estado = "❌ RECHAZAR"
+                accion = "Certificado vencido (>90 días)"
+                problemas.append(f"Vencido hace {dias} días (máximo: 90)")
+            
+            else:
+                # Fecha válida dentro de los 90 días
+                estado = "✅ OK"
+                accion = "Certificado vigente"
 
         if firma_info['tiene_firma'] == False:
-            estado = "❌ RECHAZAR"; accion = "Falta firma digital"
+            estado = "❌ RECHAZAR"
+            accion = "Falta firma digital"
             problemas.append("No se detectó firma digital")
 
     # Títulos y analíticos
     if "título" in tipo or "analítico" in tipo:
         if analisis.get('cantidad_firmas_visibles', 0) == 0:
-            estado = "⚠️ REVISAR"; accion = "No se detecta firma visible"
+            estado = "⚠️ REVISAR"
+            accion = "No se detecta firma visible"
             problemas.append("Sin firma visible")
 
     # Múltiples firmas: solo si ambas condiciones son verdaderas
     if analisis.get('multiples_firmas') and firma_info['cantidad_firmas'] > 1:
         if estado == "✅ OK":
-            estado = "⚠️ REVISAR"; accion = "Verificar cuál firma corresponde"
+            estado = "⚠️ REVISAR"
+            accion = "Verificar cuál firma corresponde"
         problemas.append("Múltiples firmas detectadas")
 
     # Calidad: solo marca si es explícitamente mala
     if calidad == "ilegible":
-        estado = "❌ RECHAZAR"; accion = "Imagen ilegible"
+        estado = "❌ RECHAZAR"
+        accion = "Imagen ilegible"
         problemas.append("Imagen ilegible")
     elif calidad in ["baja", "borrosa"]:
         if estado == "✅ OK":
-            estado = "⚠️ REVISAR"; accion = "Calidad de imagen insuficiente"
+            estado = "⚠️ REVISAR"
+            accion = "Calidad de imagen insuficiente"
         problemas.append(f"Calidad de imagen: {calidad}")
 
     # Problemas detectados por Claude
-    if problemas_claude:
+    # Filtrar problemas relacionados con "fecha futura" o "año 2026" que son falsos positivos
+    problemas_filtrados = []
+    for p in problemas_claude:
+        p_lower = p.lower()
+        # Ignorar si menciona 2026 o fecha futura como problema
+        if "2026" not in p_lower and "fecha futura" not in p_lower and "fecha posterior" not in p_lower:
+            problemas_filtrados.append(p)
+    
+    if problemas_filtrados:
         if estado == "✅ OK":
-            estado = "⚠️ REVISAR"; accion = "Revisar problemas detectados"
-        for p in problemas_claude:
+            estado = "⚠️ REVISAR"
+            accion = "Revisar problemas detectados"
+        for p in problemas_filtrados:
             problemas.append(p)
 
     # Foto de celular
     if analisis.get("es_foto_celular"):
         if estado == "✅ OK":
-            estado = "⚠️ REVISAR"; accion = "Documento fotografiado con celular"
+            estado = "⚠️ REVISAR"
+            accion = "Documento fotografiado con celular"
         problemas.append("Documento fotografiado con celular")
 
     return estado, accion, problemas
