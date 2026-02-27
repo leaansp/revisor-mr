@@ -3,7 +3,13 @@
 
 """
 REVISOR AUTOMÁTICO DE DOCUMENTOS PARA APOSTILLAS
-Versión Streamlit 3.2 – FIX: Reconoce correctamente fechas de 2026 como válidas
+Versión 3.3 FINAL – Sistema completamente dinámico (funciona en cualquier año)
+
+MEJORAS EN ESTA VERSIÓN:
+- Fix: Detecta formato "26 de febrero de 2026" correctamente
+- Fix: Prompt 100% dinámico (no hardcoded para ningún año específico)
+- Funciona automáticamente en 2025, 2026, 2027, 2028, etc.
+- Ejemplos de fechas se generan dinámicamente
 """
 
 import os
@@ -11,7 +17,7 @@ import base64
 import json
 import re
 import io
-from datetime import datetime
+from datetime import datetime, timedelta
 import streamlit as st
 import anthropic
 import pandas as pd
@@ -102,7 +108,8 @@ def calcular_dias_desde_fecha(fecha_str):
     fecha_str = fecha_str.lower()
     meses = {"enero":1,"febrero":2,"marzo":3,"abril":4,"mayo":5,"junio":6,
              "julio":7,"agosto":8,"septiembre":9,"setiembre":9,"octubre":10,"noviembre":11,"diciembre":12}
-    match = re.search(r'(\d{1,2})\s+de\s+([a-z]+)\s+(?:del\s+)?(\d{4})', fecha_str)
+    # Acepta: "15 de mayo del 2024", "15 de mayo de 2024", "15 de mayo 2024"
+    match = re.search(r'(\d{1,2})\s+de\s+([a-z]+)\s+(?:de(?:l)?\s+)?(\d{4})', fecha_str)
     if match:
         try:
             fecha = datetime(int(match.group(3)), meses.get(match.group(2), 0), int(match.group(1)))
@@ -122,26 +129,41 @@ def calcular_dias_desde_fecha(fecha_str):
 
 def analizar_con_claude(pdf_bytes):
     client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
+    
+    # Contexto temporal completamente dinámico (funciona en cualquier año)
     hoy = datetime.now().strftime('%d/%m/%Y')
     anio_actual = datetime.now().year
     mes_actual = datetime.now().strftime('%B')
+    anio_pasado = anio_actual - 1
+    fecha_hace_30_dias = (datetime.now() - timedelta(days=30)).strftime('%d/%m/%Y')
+    fecha_hace_90_dias = (datetime.now() - timedelta(days=90)).strftime('%d/%m/%Y')
+    fecha_ejemplo_futura = (datetime.now() + timedelta(days=30)).strftime('%d/%m/%Y')
 
     prompt = f"""Analizá este documento para apostilla en Cancillería Argentina.
 
-🗓️ CONTEXTO TEMPORAL CRÍTICO:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-• Fecha de HOY: {hoy}
-• Año actual: {anio_actual}
-• Mes actual: {mes_actual}
-• Estamos EN EL AÑO {anio_actual}
+🗓️ CONTEXTO TEMPORAL (actualizado automáticamente):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• HOY es: {hoy}
+• Año ACTUAL: {anio_actual}
+• Mes ACTUAL: {mes_actual}
 
-⚠️ IMPORTANTE SOBRE FECHAS:
-• Fechas de {anio_actual} son ACTUALES y COMPLETAMENTE NORMALES
-• Un certificado emitido en febrero de {anio_actual} es RECIENTE (no es futuro)
-• Solo considerá problemática una fecha si es claramente posterior a {hoy}
-• Ejemplo: Un documento con fecha "15 de febrero del {anio_actual}" emitido hoy ({hoy}) tiene solo días de antigüedad y es PERFECTAMENTE VÁLIDO
+⚠️ REGLAS SOBRE FECHAS - Lee con atención:
 
-NO marques como problema una fecha de {anio_actual} - es el año actual.
+FECHAS VÁLIDAS (NO marcar como problema):
+• Cualquier fecha del año {anio_actual} hasta hoy ({hoy})
+• Fechas recientes de {anio_pasado} (últimos meses)
+• Ejemplo: "{fecha_hace_30_dias}" (hace 30 días) = VÁLIDO ✓
+• Ejemplo: "{fecha_hace_90_dias}" (hace 90 días) = VÁLIDO ✓
+
+FECHAS PROBLEMÁTICAS (sí marcar como problema):
+• Solo fechas FUTURAS (posteriores a {hoy})
+• Ejemplo: "{fecha_ejemplo_futura}" = FUTURO (problemático) ✗
+
+REGLA SIMPLE: 
+Si fecha ≤ {hoy} → VÁLIDA, NO marcar problema
+Si fecha > {hoy} → FUTURA, marcar problema
+
+NO menciones "{anio_actual}" como algo raro o futuro - ES EL AÑO ACTUAL.
 
 📋 INSTRUCCIONES DE EXTRACCIÓN:
 
