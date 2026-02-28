@@ -29,16 +29,483 @@ import pdfplumber
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font, Alignment
 
-st.set_page_config(page_title="Revisor de Apostillas", page_icon="📄", layout="centered")
-st.title("📄 Revisor Automático de Apostillas")
-st.markdown("Subí los PDFs y el sistema los analiza automáticamente con IA.")
+st.set_page_config(page_title="Revisor de Apostillas", page_icon="📄", layout="wide")
 
-CLAUDE_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap');
+
+:root {
+    --bg:          #0E0E10;
+    --surface:     #18181B;
+    --surface2:    #232326;
+    --border:      rgba(255,255,255,0.07);
+    --accent:      #4F8EF7;
+    --accent-dim:  rgba(79,142,247,0.12);
+    --text:        #F0F0F2;
+    --text-muted:  #7A7A85;
+}
+
+html, body, [class*="css"] { font-family: 'Geist', sans-serif !important; }
+
+.stApp { background-color: var(--bg) !important; }
+.main .block-container { padding-top: 2rem; padding-bottom: 3rem; max-width: 960px; }
+
+[data-testid="stSidebar"] {
+    background-color: var(--surface) !important;
+    border-right: 1px solid var(--border) !important;
+}
+[data-testid="stSidebar"] > div:first-child { padding-top: 1.8rem; }
+[data-testid="stSidebar"] * { color: var(--text) !important; }
+[data-testid="stSidebar"] hr { border-color: var(--border) !important; margin: 1rem 0 !important; }
+[data-testid="stSidebar"] .stTextInput input {
+    background-color: var(--surface2) !important;
+    border: 1px solid var(--border) !important;
+    color: var(--text) !important;
+    border-radius: 8px !important;
+    font-family: 'Geist Mono', monospace !important;
+    font-size: 11.5px !important;
+    caret-color: var(--accent);
+}
+[data-testid="stSidebar"] .stTextInput input:focus {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 3px var(--accent-dim) !important;
+}
+
+.sidebar-label {
+    font-size: 10px !important;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-muted) !important;
+    font-weight: 500;
+    display: block;
+}
+.sidebar-title { font-size: 1rem; font-weight: 600; color: var(--text) !important; letter-spacing: -0.02em; margin: 0.2rem 0 0 0; }
+.sidebar-sub   { font-size: 11px; color: var(--text-muted) !important; margin-top: 0.15rem; letter-spacing: 0.03em; }
+
+.pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: 'Geist Mono', monospace; font-size: 10px; font-weight: 500;
+    letter-spacing: 0.05em; color: var(--accent); background: var(--accent-dim);
+    padding: 3px 10px; border-radius: 100px; margin-bottom: 1rem;
+    border: 1px solid rgba(79,142,247,0.2);
+}
+.pill-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); display: inline-block; }
+
+.main-header { padding: 0 0 0 0; margin-bottom: 0; }
+.main-header h1 { font-size: 1.75rem; font-weight: 600; color: var(--text); letter-spacing: -0.04em; margin: 0 0 0.35rem 0; line-height: 1.15; }
+.main-header p  { font-size: 0.875rem; color: var(--text-muted); margin: 0; font-weight: 400; line-height: 1.5; }
+
+[data-testid="metric-container"] {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 12px !important;
+    padding: 1.1rem 1.3rem !important;
+    transition: border-color 0.2s;
+}
+[data-testid="metric-container"]:hover { border-color: rgba(255,255,255,0.13) !important; }
+[data-testid="metric-container"] label {
+    font-size: 10px !important; letter-spacing: 0.09em !important;
+    text-transform: uppercase !important; color: var(--text-muted) !important; font-weight: 500 !important;
+}
+[data-testid="metric-container"] [data-testid="stMetricValue"] {
+    font-size: 2.1rem !important; font-weight: 600 !important;
+    color: var(--text) !important; letter-spacing: -0.03em; line-height: 1;
+}
+
+.stButton > button[kind="primary"] {
+    background: var(--accent) !important; color: #fff !important;
+    border: none !important; border-radius: 9px !important;
+    font-family: 'Geist', sans-serif !important; font-weight: 500 !important;
+    font-size: 0.875rem !important; padding: 0.6rem 1.6rem !important;
+    transition: all 0.15s ease !important;
+    box-shadow: 0 0 20px rgba(79,142,247,0.25);
+}
+.stButton > button[kind="primary"]:hover {
+    background: #6FA3F9 !important;
+    box-shadow: 0 0 28px rgba(79,142,247,0.4) !important;
+    transform: translateY(-1px);
+}
+
+.stDownloadButton > button {
+    background: var(--surface2) !important; border: 1px solid var(--border) !important;
+    color: var(--text) !important; border-radius: 9px !important;
+    font-family: 'Geist', sans-serif !important; font-weight: 500 !important;
+    font-size: 0.85rem !important; padding: 0.5rem 1.3rem !important;
+    transition: all 0.15s ease !important;
+}
+.stDownloadButton > button:hover {
+    border-color: var(--accent) !important; color: var(--accent) !important;
+    background: var(--accent-dim) !important;
+}
+
+[data-testid="stFileUploader"] {
+    background: var(--surface) !important;
+    border-radius: 14px !important;
+    padding: 0 !important;
+    overflow: hidden;
+}
+[data-testid="stFileUploaderDropzone"] {
+    background: transparent !important;
+    border: 1.5px dashed rgba(255,255,255,0.09) !important;
+    border-radius: 14px !important;
+    padding: 2.2rem 1.5rem !important;
+    transition: border-color 0.2s ease, background 0.2s ease !important;
+    cursor: pointer;
+    text-align: center;
+}
+[data-testid="stFileUploaderDropzone"]:hover {
+    border-color: var(--accent) !important;
+    background: var(--accent-dim) !important;
+}
+[data-testid="stFileUploaderDropzoneInput"] { cursor: pointer !important; }
+[data-testid="stFileUploaderDropzone"] > div > span { display: none !important; }
+[data-testid="stFileUploaderDropzone"] small {
+    font-size: 11px !important;
+    color: var(--text-muted) !important;
+    letter-spacing: 0.02em;
+    margin-top: 0.3rem;
+    display: block;
+}
+[data-testid="stFileUploaderDropzone"] button {
+    background: var(--surface2) !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    color: var(--text) !important;
+    border-radius: 8px !important;
+    font-family: 'Geist', sans-serif !important;
+    font-size: 0.8rem !important;
+    font-weight: 500 !important;
+    padding: 0.4rem 1rem !important;
+    margin-top: 0.5rem;
+    transition: all 0.15s ease !important;
+}
+[data-testid="stFileUploaderDropzone"] button:hover {
+    border-color: var(--accent) !important;
+    color: var(--accent) !important;
+    background: var(--accent-dim) !important;
+}
+[data-testid="stFileUploaderFile"] {
+    background: var(--surface2) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
+    padding: 0.5rem 0.8rem !important;
+    margin-top: 0.4rem !important;
+    font-size: 0.82rem !important;
+}
+[data-testid="stFileUploaderFile"] * { color: var(--text) !important; }
+[data-testid="stFileUploader"] label { display: none !important; }
+
+[data-testid="stProgress"] > div {
+    background: var(--surface2) !important; border-radius: 100px;
+}
+[data-testid="stProgress"] > div > div {
+    background: linear-gradient(90deg, var(--accent), #7AB8FF) !important;
+    border-radius: 100px; transition: width 0.3s ease;
+}
+
+p, span, label, div { color: var(--text); }
+h1, h2, h3, h4 { color: var(--text) !important; }
+
+[data-testid="stDataFrame"] {
+    border: 1px solid var(--border) !important;
+    border-radius: 12px !important; overflow: hidden !important;
+    background: var(--surface) !important;
+}
+
+.stAlert {
+    border-radius: 10px !important; font-size: 0.85rem !important;
+    background: var(--surface2) !important;
+    border: 1px solid var(--border) !important; color: var(--text) !important;
+}
+
+[data-testid="stExpander"] {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important; border-radius: 10px !important;
+}
+[data-testid="stExpander"] summary { font-size: 0.85rem !important; color: var(--text-muted) !important; }
+
+.section-divider { height: 1px; background: var(--border); margin: 1.8rem 0; }
+.results-label {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.8rem;
+}
+.footer {
+    margin-top: 3.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border);
+    text-align: center; color: var(--text-muted); font-size: 11px; letter-spacing: 0.03em;
+}
+
+/* ── Línea animada ── */
+.animated-line {
+    height: 1.5px;
+    background: linear-gradient(90deg, var(--accent), #7AB8FF, transparent);
+    background-size: 200% 100%;
+    border-radius: 100px;
+    animation: lineSweep 1.8s ease-out forwards;
+    margin-top: 1.8rem;
+    margin-bottom: 2.2rem;
+}
+@keyframes lineSweep {
+    0%   { width: 0%; opacity: 0; }
+    10%  { opacity: 1; }
+    100% { width: 100%; opacity: 1; }
+}
+/* ── Tabs ── */
+[data-testid="stTabs"] {
+    margin-top: 0.5rem;
+}
+[data-testid="stTabBar"] {
+    background: transparent !important;
+    border-bottom: 1px solid var(--border) !important;
+    gap: 0.25rem;
+    padding-bottom: 0;
+}
+[data-testid="stTabBar"] button {
+    background: transparent !important;
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+    border-radius: 0 !important;
+    color: var(--text-muted) !important;
+    font-family: 'Geist', sans-serif !important;
+    font-size: 0.875rem !important;
+    font-weight: 500 !important;
+    padding: 0.6rem 1rem !important;
+    transition: color 0.15s ease, border-color 0.15s ease !important;
+    letter-spacing: -0.01em;
+}
+[data-testid="stTabBar"] button:hover {
+    color: var(--text) !important;
+    background: transparent !important;
+}
+[data-testid="stTabBar"] button[aria-selected="true"] {
+    color: var(--text) !important;
+    border-bottom-color: var(--accent) !important;
+    background: transparent !important;
+}
+[data-testid="stTabContent"] {
+    padding-top: 1.8rem;
+}
+/* Criteria page styles */
+.crit-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 1.4rem 1.6rem;
+    margin-bottom: 1rem;
+}
+.crit-section-title {
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin: 0 0 1rem 0;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border);
+    display: block;
+}
+.crit-scope-tag {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: var(--accent-dim);
+    border: 1px solid rgba(79,142,247,0.2);
+    padding: 2px 8px;
+    border-radius: 100px;
+    margin-bottom: 1rem;
+}
+.crit-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.crit-row:last-child { border-bottom: none; }
+.crit-badge {
+    flex-shrink: 0;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 100px;
+    min-width: 68px;
+    text-align: center;
+}
+.badge-ok      { background: rgba(52,199,89,0.12);  color: #34C759; border: 1px solid rgba(52,199,89,0.2); }
+.badge-warn    { background: rgba(255,159,10,0.12); color: #FF9F0A; border: 1px solid rgba(255,159,10,0.2); }
+.badge-danger  { background: rgba(255,69,58,0.12);  color: #FF453A; border: 1px solid rgba(255,69,58,0.2); }
+.crit-text {
+    font-size: 0.875rem;
+    color: #B0B0BA;
+    line-height: 1.5;
+}
+.crit-note {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-top: 0.25rem;
+    font-style: italic;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+# ── SIDEBAR ──────────────────────────────────────────────────────────────────
+with st.sidebar:
+    dias = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"]
+    meses = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"]
+    now = datetime.now()
+    fecha_bonita = f"{dias[now.weekday()]} {now.day} de {meses[now.month-1]} de {now.year}"
+    st.markdown(f'''
+        <div class="pill"><span class="pill-dot"></span> v4.0 · Claude Sonnet</div>
+        <p class="sidebar-title">Revisor de Apostillas</p>
+        <p class="sidebar-sub">Dirección Técnica Consular</p>
+        <p style="font-size:10px; color:#48484A; margin: 0.15rem 0 0 0; line-height:1.5;">Ministerio de Relaciones Exteriores, Comercio Internacional y Culto &middot; Cancillería</p>
+        <p style="font-size:11px; color:#3A3A3C; margin: 0.7rem 0 0 0; font-style: italic; letter-spacing:0.01em;">{fecha_bonita}</p>
+    ''', unsafe_allow_html=True)
+    st.markdown("---")
+
+    st.markdown('<span class="sidebar-label">API Key de Claude</span>', unsafe_allow_html=True)
+    CLAUDE_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not CLAUDE_API_KEY:
+        CLAUDE_API_KEY = st.text_input(
+            label="API Key",
+            type="password",
+            placeholder="sk-ant-api03-...",
+            label_visibility="collapsed"
+        )
+    else:
+        st.markdown('<p style="font-size:12px; color:#34C759;">API Key cargada desde entorno.</p>', unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.markdown('<span class="sidebar-label">Cómo funciona</span>', unsafe_allow_html=True)
+    st.markdown("""
+<p style="font-size:12.5px; line-height:1.7; color:#7A7A85; margin-top:0.4rem;">
+Subí uno o más PDFs. El sistema los clasifica como <strong style="color:#F0F0F2;">IF</strong> (documento original) o <strong style="color:#F0F0F2;">CE</strong> (certificado) y los empareja por número de expediente.<br><br>
+Los pares IF+CE se analizan en conjunto. Los archivos sueltos se procesan individualmente.<br><br>
+El resultado incluye estado de firma digital, vigencia y observaciones.
+</p>
+""", unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.markdown('<p style="font-size:11px; color:#48484A; margin:0;">Leandro Spinelli · 2026</p>', unsafe_allow_html=True)
+
 if not CLAUDE_API_KEY:
-    CLAUDE_API_KEY = st.text_input("🔑 Ingresá tu API Key de Claude:", type="password", placeholder="sk-ant-api03-...")
-if not CLAUDE_API_KEY:
-    st.warning("Ingresá tu API Key para continuar.")
+    st.warning("Ingresá tu API Key en el panel lateral para continuar.")
     st.stop()
+
+# ── HEADER PRINCIPAL ─────────────────────────────────────────────────────────
+st.markdown("""
+<div class="main-header">
+    <h1>Revisor Automático de Apostillas</h1>
+    <p>Cargá los PDFs — el sistema los clasifica, empareja y valida automáticamente con IA.</p>
+</div>
+<div class="animated-line"></div>
+""", unsafe_allow_html=True)
+
+tab_revision, tab_criterios = st.tabs(["Revisión", "Criterios normativos"])
+
+with tab_criterios:
+    st.markdown("""
+<div class="crit-section">
+  <span class="crit-section-title">Documentos de Estado Civil · CABA</span>
+  <span class="crit-scope-tag">Solo Registro Civil CABA</span>
+  <p style="font-size:0.82rem; color:#7A7A85; margin: 0 0 1rem 0; line-height:1.6;">
+    La lógica de vinculación IF + CE aplica exclusivamente a partidas de nacimiento, matrimonio y defunción emitidas por el Registro Civil del Gobierno de la Ciudad Autonoma de Buenos Aires (GCBA). No aplica a documentos de otras provincias ni de otros organismos.
+  </p>
+  <div class="crit-row">
+    <span class="crit-badge badge-ok">Aprobado</span>
+    <div><span class="crit-text">CE referencia correctamente al número IF del documento</span></div>
+  </div>
+  <div class="crit-row">
+    <span class="crit-badge badge-ok">Aprobado</span>
+    <div><span class="crit-text">Firma digital del CE presente y válida</span></div>
+  </div>
+  <div class="crit-row">
+    <span class="crit-badge badge-warn">Revisar</span>
+    <div><span class="crit-text">CE cargado sin su IF correspondiente</span></div>
+  </div>
+  <div class="crit-row">
+    <span class="crit-badge badge-warn">Revisar</span>
+    <div><span class="crit-text">IF cargado sin su CE correspondiente</span></div>
+  </div>
+  <div class="crit-row">
+    <span class="crit-badge badge-warn">Revisar</span>
+    <div><span class="crit-text">Firma del CE no detectable automáticamente</span></div>
+  </div>
+  <div class="crit-row">
+    <span class="crit-badge badge-danger">Rechazar</span>
+    <div><span class="crit-text">CE no referencia al número IF del documento</span></div>
+  </div>
+  <div class="crit-row">
+    <span class="crit-badge badge-danger">Rechazar</span>
+    <div><span class="crit-text">Firma digital del CE ausente</span></div>
+  </div>
+</div>
+
+<div class="crit-section">
+  <span class="crit-section-title">Antecedentes Penales</span>
+  <div class="crit-row">
+    <span class="crit-badge badge-ok">Aprobado</span>
+    <div><span class="crit-text">Emitido hace 90 días o menos</span><p class="crit-note">Fecha calculada automáticamente desde la emisión hasta hoy.</p></div>
+  </div>
+  <div class="crit-row">
+    <span class="crit-badge badge-ok">Aprobado</span>
+    <div><span class="crit-text">Firma digital presente y válida</span></div>
+  </div>
+  <div class="crit-row">
+    <span class="crit-badge badge-warn">Revisar</span>
+    <div><span class="crit-text">Fecha de emisión no detectable o ambigua</span></div>
+  </div>
+  <div class="crit-row">
+    <span class="crit-badge badge-danger">Rechazar</span>
+    <div><span class="crit-text">Emitido hace más de 90 días</span><p class="crit-note">Cancillería no acepta antecedentes con más de 90 días de antigüedad.</p></div>
+  </div>
+  <div class="crit-row">
+    <span class="crit-badge badge-danger">Rechazar</span>
+    <div><span class="crit-text">Firma digital ausente</span></div>
+  </div>
+</div>
+
+<div class="crit-section">
+  <span class="crit-section-title">Títulos y Analíticos</span>
+  <div class="crit-row">
+    <span class="crit-badge badge-ok">Aprobado</span>
+    <div><span class="crit-text">Al menos una firma visible detectada</span></div>
+  </div>
+  <div class="crit-row">
+    <span class="crit-badge badge-warn">Revisar</span>
+    <div><span class="crit-text">Sin firma visible detectada</span></div>
+  </div>
+  <div class="crit-row">
+    <span class="crit-badge badge-warn">Revisar</span>
+    <div><span class="crit-text">Múltiples firmas con ambigüedad sobre cuál aplica</span></div>
+  </div>
+</div>
+
+<div class="crit-section">
+  <span class="crit-section-title">Criterios generales · Todos los documentos</span>
+  <div class="crit-row">
+    <span class="crit-badge badge-ok">Aprobado</span>
+    <div><span class="crit-text">Imagen de calidad alta, clara o nítida</span></div>
+  </div>
+  <div class="crit-row">
+    <span class="crit-badge badge-warn">Revisar</span>
+    <div><span class="crit-text">Imagen de calidad baja o borrosa</span></div>
+  </div>
+  <div class="crit-row">
+    <span class="crit-badge badge-warn">Revisar</span>
+    <div><span class="crit-text">Documento fotografiado con celular</span></div>
+  </div>
+  <div class="crit-row">
+    <span class="crit-badge badge-danger">Rechazar</span>
+    <div><span class="crit-text">Imagen ilegible</span></div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
 # =============================================================================
 # FIRMA DIGITAL - busca en los mismos lugares que Adobe Reader
@@ -178,7 +645,12 @@ def detectar_tipo_por_contenido(pdf_bytes, nombre_archivo=""):
         clave = extraer_clave_if(texto_norm)
         return ("CE", clave, texto_norm)
 
-    # ── Es IF: señales de GCABA + extracción de número desde bytes crudos ───
+    # ── Es IF de GCABA: señales de GCABA + número IF con sufijo DGRC ─────────
+    # La clave discriminante es el sufijo DGRC (Dirección General del Registro
+    # Civil de CABA). Cualquier otro organismo que use GEDO tendrá un sufijo
+    # distinto (ej: GDEBA para Provincia de Buenos Aires). Si no hay número IF
+    # con DGRC, el documento no es un IF de GCABA aunque use GEDO o tenga
+    # "Hoja Adicional de Firmas" — se trata como documento individual (OTRO).
     señales_gcaba = [
         "GOBIERNO DE LA CIUDAD",
         "HOJA ADICIONAL DE FIRMAS",
@@ -187,7 +659,13 @@ def detectar_tipo_por_contenido(pdf_bytes, nombre_archivo=""):
     ]
     if any(s in texto_upper for s in señales_gcaba):
         clave_if = extraer_if_de_bytes_crudos(pdf_bytes)
-        return ("IF", clave_if, texto_norm)
+        if clave_if:
+            # Verificación extra: el número IF debe venir de un documento DGRC
+            raw = pdf_bytes.decode("latin-1", errors="ignore").upper()
+            if "DGRC" in raw or "GOBIERNO DE LA CIUDAD" in texto_upper:
+                return ("IF", clave_if, texto_norm)
+        # Tiene señales de GEDO pero no es GCABA → procesar como individual
+        return ("OTRO", None, texto_norm)
 
     # ── OTRO ─────────────────────────────────────────────────────────────────
     return ("OTRO", None, texto_norm)
@@ -288,15 +766,21 @@ Para multiples_firmas:
 • Si hay una sola firma clara, marcá false
 
 Para problemas_detectados:
-• Listá SOLO problemas concretos y reales
+• Listá SOLO problemas DOCUMENTALES que impidan o compliquen la apostilla
+• Problemas válidos: firma ausente, imagen ilegible, fecha futura, calidad baja, foto de celular
 • NO incluyas la fecha como problema si es de {anio_actual}
-• Si el documento está bien, dejá la lista vacía []
+• NO incluyas circunstancias del contenido del documento (causa de muerte, tipo de delito, intervención judicial, antecedentes penales registrados, etc.) — eso NO es un problema documental
+• Si el documento está formalmente bien, dejá la lista vacía []
 
 Para observacion_redactada:
-• Escribí UNA sola oración clara y profesional que resuma el documento
-• Ejemplo: "Certificado de antecedentes penales emitido el 15/02/{anio_actual} con firma digital de Juan Pérez, vigente."
-• NO uses jerga técnica ni listes campos
-• Si hay un problema REAL (no la fecha), mencionalo al final
+• Escribí UNA oración clara y profesional que resuma el documento
+• Incluí siempre: tipo de documento, titular, fecha, firmante
+• Si el documento tiene detalles de contenido interesantes o llamativos, mencionálos naturalmente al final — por ejemplo: causa de muerte inusual, intervención judicial, antecedentes penales registrados, etc.
+• Estos detalles son informativos, NO son problemas. El tono debe ser descriptivo y profesional, no alarmista
+• Ejemplos de buenas observaciones:
+  - "Acta de defunción de José Miguel Sandoval Rojas emitida el 29/01/2026 por Lucrecia Olivieri, con firma digital válida. Fallecimiento por herida de arma de fuego con intervención de UFI 03."
+  - "Certificado de antecedentes penales de Juan García emitido el 15/02/{anio_actual}, vigente, con firma digital. Registra antecedentes penales por robo."
+  - "Acta de nacimiento de Sofía López emitida el 03/01/{anio_actual} por el Registro Civil, con firma digital de María Rodríguez."
 
 Para titular_documento:
 • El nombre completo de la persona a quien pertenece el documento
@@ -644,250 +1128,367 @@ def generar_excel(df):
 # INTERFAZ
 # =============================================================================
 
-archivos = st.file_uploader("📂 Subí los PDFs a revisar", type=["pdf"], accept_multiple_files=True)
+with tab_revision:
+    st.markdown("""
+    <div style="
+        background: var(--surface);
+        border: 1.5px dashed rgba(255,255,255,0.09);
+        border-radius: 14px;
+        padding: 1.6rem 1.5rem 0.6rem 1.5rem;
+        margin-bottom: -0.5rem;
+        text-align: center;
+    ">
+        <div style="font-size: 1.6rem; margin-bottom: 0.5rem; opacity: 0.4;">&#8686;</div>
+        <p style="font-size: 0.9rem; font-weight: 500; color: #F0F0F2; margin: 0 0 0.2rem 0; letter-spacing: -0.01em;">
+            Arrastrá los PDFs acá
+        </p>
+        <p style="font-size: 0.78rem; color: #7A7A85; margin: 0 0 0.8rem 0;">
+            Podés subir varios archivos a la vez — IF y CE juntos
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
-if archivos:
-    st.info(f"{len(archivos)} archivo(s) cargado(s). Listo para procesar.")
+    archivos = st.file_uploader("PDFs", type=["pdf"], accept_multiple_files=True, label_visibility="collapsed")
 
-    if st.button("🚀 Analizar documentos", type="primary"):
-        resultados = []
-        barra = st.progress(0)
-        estado_texto = st.empty()
+    if not archivos:
+        st.markdown("""
+<div style="
+    margin-top: 2.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 2.5rem 1rem;
+    opacity: 0.85;
+">
+    <div style="
+        width: 52px; height: 52px;
+        border: 1.5px solid rgba(255,255,255,0.08);
+        border-radius: 14px;
+        display: flex; align-items: center; justify-content: center;
+        margin-bottom: 1.1rem;
+        font-size: 1.3rem;
+        background: #18181B;
+    ">📂</div>
+    <p style="font-size: 0.95rem; font-weight: 500; color: #F0F0F2; margin: 0 0 0.35rem 0; letter-spacing: -0.01em;">
+        Ningún documento cargado
+    </p>
+    <p style="font-size: 0.82rem; color: #7A7A85; margin: 0 0 1.8rem 0; max-width: 320px; line-height: 1.6;">
+        Subí los PDFs arriba para comenzar. El sistema detecta automáticamente si son IF, CE o documentos individuales.
+    </p>
+    <div style="display: flex; gap: 1.5rem; justify-content: center; flex-wrap: wrap;">
+        <div style="
+            background: #18181B; border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 10px; padding: 0.75rem 1.1rem; min-width: 130px;
+        ">
+            <p style="font-size: 9px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #7A7A85; margin: 0 0 0.3rem 0;">Acepta</p>
+            <p style="font-size: 0.82rem; color: #B0B0BA; margin: 0; font-weight: 500;">Solo archivos PDF</p>
+        </div>
+        <div style="
+            background: #18181B; border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 10px; padding: 0.75rem 1.1rem; min-width: 130px;
+        ">
+            <p style="font-size: 9px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #7A7A85; margin: 0 0 0.3rem 0;">Cantidad</p>
+            <p style="font-size: 0.82rem; color: #B0B0BA; margin: 0; font-weight: 500;">Múltiples a la vez</p>
+        </div>
+        <div style="
+            background: #18181B; border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 10px; padding: 0.75rem 1.1rem; min-width: 130px;
+        ">
+            <p style="font-size: 9px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #7A7A85; margin: 0 0 0.3rem 0;">Clasifica</p>
+            <p style="font-size: 0.82rem; color: #B0B0BA; margin: 0; font-weight: 500;">IF · CE · Individual</p>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
-        # ─────────────────────────────────────────────────────────────────
-        # PASO 1: Clasificar archivos en IF, CE y OTROS leyendo el CONTENIDO
-        # (independiente del nombre del archivo)
-        # ─────────────────────────────────────────────────────────────────
-        archivos_if = {}   # clave_if (año, numero) → {"archivo": ..., "bytes": ..., "nombre": ...}
-        archivos_ce = {}   # nombre → {"archivo": ..., "bytes": ..., "clave_if_ref": ...}
-        archivos_otros = []
+    if archivos:
+        st.info(f"{len(archivos)} archivo(s) cargado(s) · Listo para procesar.")
 
-        # Panel de debug expandible
-        with st.expander("🔍 Debug: clasificación de archivos (expandí si hay problemas)", expanded=False):
-            debug_placeholder = st.empty()
-            debug_rows = []
+        if st.button("Analizar documentos", type="primary"):
+            resultados = []
+            barra = st.progress(0)
+            estado_texto = st.empty()
 
-        for archivo in archivos:
-            pdf_bytes = archivo.read()
-            tipo, clave, texto_extraido = detectar_tipo_por_contenido(pdf_bytes, archivo.name)
+            # ─────────────────────────────────────────────────────────────────
+            # PASO 1: Clasificar archivos en IF, CE y OTROS leyendo el CONTENIDO
+            # (independiente del nombre del archivo)
+            # ─────────────────────────────────────────────────────────────────
+            archivos_if = {}   # clave_if (año, numero) → {"archivo": ..., "bytes": ..., "nombre": ...}
+            archivos_ce = {}   # nombre → {"archivo": ..., "bytes": ..., "clave_if_ref": ...}
+            archivos_otros = []
 
-            # Info de debug
-            preview = texto_extraido[:300].replace("\n", " ") if texto_extraido else "(sin texto extraíble)"
-            clave_str = f"IF-{clave[0]}-{clave[1]}" if clave else "—"
-            debug_rows.append({
-                "Archivo": archivo.name,
-                "Clasificado como": tipo,
-                "Clave IF detectada": clave_str,
-                "Texto extraído (primeros 300 chars)": preview
-            })
-            debug_placeholder.dataframe(pd.DataFrame(debug_rows), use_container_width=True)
+            # Panel de debug expandible
+            with st.expander("Clasificación de archivos — expandí si hay problemas de emparejamiento", expanded=False):
+                debug_placeholder = st.empty()
+                debug_rows = []
 
-            if tipo == "IF":
-                archivos_if[clave] = {"archivo": archivo, "bytes": pdf_bytes, "nombre": archivo.name}
+            for archivo in archivos:
+                pdf_bytes = archivo.read()
+                tipo, clave, texto_extraido = detectar_tipo_por_contenido(pdf_bytes, archivo.name)
 
-            elif tipo == "CE":
-                archivos_ce[archivo.name] = {
-                    "archivo": archivo,
-                    "bytes": pdf_bytes,
-                    "clave_if_ref": clave,
-                    "nombre": archivo.name
-                }
-            else:
-                archivos_otros.append({"archivo": archivo, "bytes": pdf_bytes})
-
-        # ─────────────────────────────────────────────────────────────────
-        # PASO 2: Emparejar CE ↔ IF — solo por coincidencia EXACTA de número
-        # No hay fallbacks ciegos: si los números no coinciden, no se emparejan
-        # ─────────────────────────────────────────────────────────────────
-        pares = []
-        if_usados = set()
-        ce_usados = set()
-
-        for ce_nombre, ce_data in archivos_ce.items():
-            clave_ref = ce_data["clave_if_ref"]
-
-            if clave_ref and clave_ref in archivos_if:
-                # Coincidencia exacta: el CE referencia este IF por número
-                pares.append({
-                    "if": archivos_if[clave_ref],
-                    "ce": ce_data
-                })
-                if_usados.add(clave_ref)
-                ce_usados.add(ce_nombre)
-            else:
-                # Sin coincidencia: CE huérfano (falta el IF o los números no coinciden)
-                ce_usados.add(ce_nombre)
-                archivos_otros.append({
-                    "archivo": ce_data["archivo"],
-                    "bytes": ce_data["bytes"],
-                    "advertencia_ce_sin_if": True,
-                    "clave_if_ref": clave_ref
-                })
-
-        # IFs que no fueron referenciados por ningún CE
-        for clave_if, if_data in archivos_if.items():
-            if clave_if not in if_usados:
-                archivos_otros.append({
-                    "archivo": if_data["archivo"],
-                    "bytes": if_data["bytes"],
-                    "advertencia_if_sin_ce": True
-                })
-
-        total_tareas = len(pares) + len(archivos_otros)
-        tarea_actual = 0
-
-        # ─────────────────────────────────────────────────────────────────
-        # PASO 3: Procesar PARES IF+CE
-        # ─────────────────────────────────────────────────────────────────
-        for par in pares:
-            if_data = par["if"]
-            ce_data = par["ce"]
-            nombre_display = f"{if_data['nombre']} + {ce_data['nombre']}"
-            estado_texto.text(f"Analizando par: {nombre_display}...")
-
-            try:
-                # Firma: solo la del CE importa
-                firma_info_ce = verificar_firma_digital(ce_data["bytes"])
-
-                # Análisis conjunto con Claude (PDF combinado)
-                analisis_par = analizar_par_if_ce_con_claude(
-                    if_data["bytes"],
-                    ce_data["bytes"],
-                    if_data["nombre"],
-                    ce_data["nombre"]
-                )
-
-                estado, accion, problemas = evaluar_par_if_ce(firma_info_ce, analisis_par)
-                observacion = generar_observacion(analisis_par, problemas)
-
-                tiene_firma = firma_info_ce["tiene_firma"]
-                firma_texto = "SÍ" if tiene_firma else ("NO" if tiene_firma == False else "NO DETECTADA")
-
-                firmante_ce = analisis_par.get("firmante_ce", "") or "No identificado"
-                cargo_ce = analisis_par.get("cargo_firmante_ce", "") or ""
-                firmante_display = f"{firmante_ce} ({cargo_ce})" if cargo_ce else firmante_ce
-
-                resultados.append({
-                    "Archivo": nombre_display,
-                    "Tipo trámite": "📎 Par IF+CE",
-                    "Titular": analisis_par.get("titular_documento"),
-                    "Tipo": analisis_par.get("tipo_documento"),
-                    "Fecha CE": analisis_par.get("fecha_emision"),
-                    "CE referencia IF": "✅ SÍ" if analisis_par.get("ce_referencia_if_correctamente") else "❌ NO",
-                    "IF encontrado en CE": analisis_par.get("numero_if_encontrado_en_ce", ""),
-                    "Firmante CE": firmante_display,
-                    "Firma Digital CE": firma_texto,
-                    "Firmantes Certificado": ", ".join(firma_info_ce["firmantes"]),
-                    "Estado": estado,
-                    "Acción": accion,
-                    "Observaciones": observacion
-                })
-
-            except Exception as e:
-                resultados.append({
-                    "Archivo": nombre_display,
-                    "Tipo trámite": "📎 Par IF+CE",
-                    "Titular": "",
-                    "Tipo": "",
-                    "Fecha CE": "",
-                    "CE referencia IF": "",
-                    "IF encontrado en CE": "",
-                    "Firmante CE": "",
-                    "Firma Digital CE": "",
-                    "Firmantes Certificado": "",
-                    "Estado": "⚠️ REVISAR",
-                    "Acción": "Error de análisis",
-                    "Observaciones": f"Error: {str(e)}"
-                })
-
-            tarea_actual += 1
-            barra.progress(tarea_actual / total_tareas)
-
-        # ─────────────────────────────────────────────────────────────────
-        # PASO 4: Procesar archivos individuales (OTROS, IF sin CE, CE sin IF)
-        # ─────────────────────────────────────────────────────────────────
-        for item in archivos_otros:
-            archivo = item["archivo"]
-            pdf_bytes = item["bytes"]
-            estado_texto.text(f"Analizando {archivo.name}...")
-
-            advertencia_extra = ""
-            if item.get("advertencia_if_sin_ce"):
-                advertencia_extra = "⚠️ IF sin CE correspondiente cargado"
-            elif item.get("advertencia_ce_sin_if"):
-                clave_ref = item.get("clave_if_ref")
-                ref_str = f"IF-{clave_ref[0]}-{clave_ref[1]}" if clave_ref else "desconocido"
-                advertencia_extra = f"⚠️ CE sin IF correspondiente (busca: {ref_str})"
-
-            try:
-                firma_info = verificar_firma_digital(pdf_bytes)
-                analisis = analizar_con_claude(pdf_bytes)
-                estado, accion, problemas = evaluar_documento(firma_info, analisis)
-
-                if advertencia_extra:
-                    problemas.append(advertencia_extra)
-                    if estado == "✅ OK":
-                        estado = "⚠️ REVISAR"
-                        accion = advertencia_extra
-
-                observacion = generar_observacion(analisis, problemas)
-
-                tiene_firma = firma_info["tiene_firma"]
-                firma_texto = "SÍ" if tiene_firma else ("NO" if tiene_firma == False else "NO DETECTADA")
-
-                resultados.append({
+                # Info de debug
+                preview = texto_extraido[:300].replace("\n", " ") if texto_extraido else "(sin texto extraíble)"
+                clave_str = f"IF-{clave[0]}-{clave[1]}" if clave else "—"
+                debug_rows.append({
                     "Archivo": archivo.name,
-                    "Tipo trámite": "📄 Individual",
-                    "Titular": analisis.get("titular_documento"),
-                    "Tipo": analisis.get("tipo_documento"),
-                    "Fecha CE": analisis.get("fecha_emision"),
-                    "CE referencia IF": "—",
-                    "IF encontrado en CE": "—",
-                    "Firmante CE": "—",
-                    "Firma Digital CE": firma_texto,
-                    "Firmantes Certificado": ", ".join(firma_info["firmantes"]),
-                    "Estado": estado,
-                    "Acción": accion,
-                    "Observaciones": observacion
+                    "Clasificado como": tipo,
+                    "Clave IF detectada": clave_str,
+                    "Texto extraído (primeros 300 chars)": preview
                 })
+                debug_placeholder.dataframe(pd.DataFrame(debug_rows), use_container_width=True)
 
-            except Exception as e:
-                resultados.append({
-                    "Archivo": archivo.name,
-                    "Tipo trámite": "📄 Individual",
-                    "Titular": "",
-                    "Tipo": "",
-                    "Fecha CE": "",
-                    "CE referencia IF": "—",
-                    "IF encontrado en CE": "—",
-                    "Firmante CE": "—",
-                    "Firma Digital CE": "",
-                    "Firmantes Certificado": "",
-                    "Estado": "⚠️ REVISAR",
-                    "Acción": "Error de análisis",
-                    "Observaciones": f"Error: {str(e)}"
-                })
+                if tipo == "IF":
+                    archivos_if[clave] = {"archivo": archivo, "bytes": pdf_bytes, "nombre": archivo.name}
 
-            tarea_actual += 1
-            barra.progress(tarea_actual / total_tareas)
+                elif tipo == "CE":
+                    archivos_ce[archivo.name] = {
+                        "archivo": archivo,
+                        "bytes": pdf_bytes,
+                        "clave_if_ref": clave,
+                        "nombre": archivo.name
+                    }
+                else:
+                    archivos_otros.append({"archivo": archivo, "bytes": pdf_bytes})
 
-        estado_texto.text("✅ Análisis completado.")
+            # ─────────────────────────────────────────────────────────────────
+            # PASO 2: Emparejar CE ↔ IF — solo por coincidencia EXACTA de número
+            # No hay fallbacks ciegos: si los números no coinciden, no se emparejan
+            # ─────────────────────────────────────────────────────────────────
+            pares = []
+            if_usados = set()
+            ce_usados = set()
 
-        # Resumen de pares detectados
-        if pares:
-            st.success(f"🔗 {len(pares)} par(es) IF+CE vinculados correctamente.")
+            for ce_nombre, ce_data in archivos_ce.items():
+                clave_ref = ce_data["clave_if_ref"]
 
-        df = pd.DataFrame(resultados)
+                if clave_ref and clave_ref in archivos_if:
+                    # Coincidencia exacta: el CE referencia este IF por número
+                    pares.append({
+                        "if": archivos_if[clave_ref],
+                        "ce": ce_data
+                    })
+                    if_usados.add(clave_ref)
+                    ce_usados.add(ce_nombre)
+                else:
+                    # Sin coincidencia: CE huérfano (falta el IF o los números no coinciden)
+                    ce_usados.add(ce_nombre)
+                    archivos_otros.append({
+                        "archivo": ce_data["archivo"],
+                        "bytes": ce_data["bytes"],
+                        "advertencia_ce_sin_if": True,
+                        "clave_if_ref": clave_ref
+                    })
 
-        st.subheader("📊 Resultados")
-        st.dataframe(df, use_container_width=True)
+            # IFs que no fueron referenciados por ningún CE
+            for clave_if, if_data in archivos_if.items():
+                if clave_if not in if_usados:
+                    archivos_otros.append({
+                        "archivo": if_data["archivo"],
+                        "bytes": if_data["bytes"],
+                        "advertencia_if_sin_ce": True
+                    })
 
-        st.download_button(
-            label="⬇️ Descargar Excel",
-            data=generar_excel(df),
-            file_name="revision_apostillas.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+            total_tareas = len(pares) + len(archivos_otros)
+            tarea_actual = 0
 
-st.markdown("---")
-st.markdown("<p style='text-align: center; color: gray; font-size: 12px;'>Desarrollado por Leandro Spinelli · Automatización de procesos documentales con IA · 2026</p>", unsafe_allow_html=True)
+            # ─────────────────────────────────────────────────────────────────
+            # PASO 3: Procesar PARES IF+CE
+            # ─────────────────────────────────────────────────────────────────
+            for par in pares:
+                if_data = par["if"]
+                ce_data = par["ce"]
+                nombre_display = f"{if_data['nombre']} + {ce_data['nombre']}"
+                estado_texto.text(f"Analizando par: {nombre_display}...")
+
+                try:
+                    # Firma: solo la del CE importa
+                    firma_info_ce = verificar_firma_digital(ce_data["bytes"])
+
+                    # Análisis conjunto con Claude (PDF combinado)
+                    analisis_par = analizar_par_if_ce_con_claude(
+                        if_data["bytes"],
+                        ce_data["bytes"],
+                        if_data["nombre"],
+                        ce_data["nombre"]
+                    )
+
+                    estado, accion, problemas = evaluar_par_if_ce(firma_info_ce, analisis_par)
+                    observacion = generar_observacion(analisis_par, problemas)
+
+                    tiene_firma = firma_info_ce["tiene_firma"]
+                    firma_texto = "SÍ" if tiene_firma else ("NO" if tiene_firma == False else "NO DETECTADA")
+
+                    firmante_ce = analisis_par.get("firmante_ce", "") or "No identificado"
+                    cargo_ce = analisis_par.get("cargo_firmante_ce", "") or ""
+                    firmante_display = f"{firmante_ce} ({cargo_ce})" if cargo_ce else firmante_ce
+
+                    resultados.append({
+                        "Archivo": nombre_display,
+                        "Tipo trámite": "📎 Par IF+CE",
+                        "Titular": analisis_par.get("titular_documento"),
+                        "Tipo": analisis_par.get("tipo_documento"),
+                        "Fecha CE": analisis_par.get("fecha_emision"),
+                        "CE referencia IF": "✅ SÍ" if analisis_par.get("ce_referencia_if_correctamente") else "❌ NO",
+                        "IF encontrado en CE": analisis_par.get("numero_if_encontrado_en_ce", ""),
+                        "Firmante CE": firmante_display,
+                        "Firma Digital CE": firma_texto,
+                        "Firmantes Certificado": ", ".join(firma_info_ce["firmantes"]),
+                        "Estado": estado,
+                        "Acción": accion,
+                        "Observaciones": observacion
+                    })
+
+                except Exception as e:
+                    resultados.append({
+                        "Archivo": nombre_display,
+                        "Tipo trámite": "📎 Par IF+CE",
+                        "Titular": "",
+                        "Tipo": "",
+                        "Fecha CE": "",
+                        "CE referencia IF": "",
+                        "IF encontrado en CE": "",
+                        "Firmante CE": "",
+                        "Firma Digital CE": "",
+                        "Firmantes Certificado": "",
+                        "Estado": "⚠️ REVISAR",
+                        "Acción": "Error de análisis",
+                        "Observaciones": f"Error: {str(e)}"
+                    })
+
+                tarea_actual += 1
+                barra.progress(tarea_actual / total_tareas)
+
+            # ─────────────────────────────────────────────────────────────────
+            # PASO 4: Procesar archivos individuales (OTROS, IF sin CE, CE sin IF)
+            # ─────────────────────────────────────────────────────────────────
+            for item in archivos_otros:
+                archivo = item["archivo"]
+                pdf_bytes = item["bytes"]
+                estado_texto.text(f"Analizando {archivo.name}...")
+
+                advertencia_extra = ""
+                if item.get("advertencia_if_sin_ce"):
+                    advertencia_extra = "⚠️ IF sin CE correspondiente cargado"
+                elif item.get("advertencia_ce_sin_if"):
+                    clave_ref = item.get("clave_if_ref")
+                    ref_str = f"IF-{clave_ref[0]}-{clave_ref[1]}" if clave_ref else "desconocido"
+                    advertencia_extra = f"⚠️ CE sin IF correspondiente (busca: {ref_str})"
+
+                try:
+                    firma_info = verificar_firma_digital(pdf_bytes)
+                    analisis = analizar_con_claude(pdf_bytes)
+                    estado, accion, problemas = evaluar_documento(firma_info, analisis)
+
+                    if advertencia_extra:
+                        problemas.append(advertencia_extra)
+                        if estado == "✅ OK":
+                            estado = "⚠️ REVISAR"
+                            accion = advertencia_extra
+
+                    observacion = generar_observacion(analisis, problemas)
+
+                    tiene_firma = firma_info["tiene_firma"]
+                    firma_texto = "SÍ" if tiene_firma else ("NO" if tiene_firma == False else "NO DETECTADA")
+
+                    resultados.append({
+                        "Archivo": archivo.name,
+                        "Tipo trámite": "📄 Individual",
+                        "Titular": analisis.get("titular_documento"),
+                        "Tipo": analisis.get("tipo_documento"),
+                        "Fecha CE": analisis.get("fecha_emision"),
+                        "CE referencia IF": "—",
+                        "IF encontrado en CE": "—",
+                        "Firmante CE": "—",
+                        "Firma Digital CE": firma_texto,
+                        "Firmantes Certificado": ", ".join(firma_info["firmantes"]),
+                        "Estado": estado,
+                        "Acción": accion,
+                        "Observaciones": observacion
+                    })
+
+                except Exception as e:
+                    resultados.append({
+                        "Archivo": archivo.name,
+                        "Tipo trámite": "📄 Individual",
+                        "Titular": "",
+                        "Tipo": "",
+                        "Fecha CE": "",
+                        "CE referencia IF": "—",
+                        "IF encontrado en CE": "—",
+                        "Firmante CE": "—",
+                        "Firma Digital CE": "",
+                        "Firmantes Certificado": "",
+                        "Estado": "⚠️ REVISAR",
+                        "Acción": "Error de análisis",
+                        "Observaciones": f"Error: {str(e)}"
+                    })
+
+                tarea_actual += 1
+                barra.progress(tarea_actual / total_tareas)
+
+            estado_texto.text("Análisis completado.")
+
+            # Resumen de pares detectados
+            if pares:
+                st.success(f"{len(pares)} par(es) IF+CE vinculados correctamente.")
+
+            df = pd.DataFrame(resultados)
+
+            # ── MÉTRICAS ─────────────────────────────────────────────────────
+            st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+            total = len(df)
+            ok = len(df[df["Estado"].str.contains("OK", na=False)])
+            revisar = len(df[df["Estado"].str.contains("REVISAR", na=False)])
+            rechazar = len(df[df["Estado"].str.contains("RECHAZAR", na=False)])
+
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Total analizados", total)
+            col2.metric("Aprobados", ok)
+            col3.metric("A revisar", revisar)
+            col4.metric("Rechazados", rechazar)
+            st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+
+            # ── TABLA ─────────────────────────────────────────────────────────
+            st.markdown('<p class="results-label">Resultados detallados</p>', unsafe_allow_html=True)
+
+            def colorear_filas(row):
+                estado = str(row.get("Estado", ""))
+                if "OK" in estado:
+                    color = "background-color: rgba(52,199,89,0.08); color: #E0E0E0;"
+                elif "REVISAR" in estado:
+                    color = "background-color: rgba(255,159,10,0.08); color: #E0E0E0;"
+                elif "RECHAZAR" in estado:
+                    color = "background-color: rgba(255,69,58,0.08); color: #E0E0E0;"
+                else:
+                    color = "color: #E0E0E0;"
+                return [color] * len(row)
+
+            def colorear_celda_estado(val):
+                val = str(val)
+                if "OK" in val:
+                    return "color: #34C759; font-weight: 600;"
+                elif "REVISAR" in val:
+                    return "color: #FF9F0A; font-weight: 600;"
+                elif "RECHAZAR" in val:
+                    return "color: #FF453A; font-weight: 600;"
+                return ""
+
+            df_styled = (
+                df.style
+                .apply(colorear_filas, axis=1)
+                .map(colorear_celda_estado, subset=["Estado"])
+            )
+
+            st.dataframe(df_styled, use_container_width=True)
+
+            st.markdown('<div style="margin-top:1rem;"></div>', unsafe_allow_html=True)
+            st.download_button(
+                label="Descargar Excel",
+                data=generar_excel(df),
+                file_name="revision_apostillas.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+
+st.markdown('<div class="footer">Revisor de Apostillas · Automatización documental con IA · Leandro Spinelli · 2026 · v4.0</div>', unsafe_allow_html=True)
