@@ -92,7 +92,7 @@ html, body, [class*="css"] { font-family: 'Geist', sans-serif !important; }
 }
 .pill-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); display: inline-block; }
 
-.main-header { padding: 0 0 0 0; margin-bottom: 0; }
+.main-header { padding: 0 0 2rem 0; border-bottom: 1px solid var(--border); margin-bottom: 2.2rem; }
 .main-header h1 { font-size: 1.75rem; font-weight: 600; color: var(--text); letter-spacing: -0.04em; margin: 0 0 0.35rem 0; line-height: 1.15; }
 .main-header p  { font-size: 0.875rem; color: var(--text-muted); margin: 0; font-weight: 400; line-height: 1.5; }
 
@@ -232,22 +232,6 @@ h1, h2, h3, h4 { color: var(--text) !important; }
 .footer {
     margin-top: 3.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border);
     text-align: center; color: var(--text-muted); font-size: 11px; letter-spacing: 0.03em;
-}
-
-/* ── Línea animada ── */
-.animated-line {
-    height: 1.5px;
-    background: linear-gradient(90deg, var(--accent), #7AB8FF, transparent);
-    background-size: 200% 100%;
-    border-radius: 100px;
-    animation: lineSweep 1.8s ease-out forwards;
-    margin-top: 1.8rem;
-    margin-bottom: 2.2rem;
-}
-@keyframes lineSweep {
-    0%   { width: 0%; opacity: 0; }
-    10%  { opacity: 1; }
-    100% { width: 100%; opacity: 1; }
 }
 /* ── Tabs ── */
 [data-testid="stTabs"] {
@@ -403,7 +387,6 @@ st.markdown("""
     <h1>Revisor Automático de Apostillas</h1>
     <p>Cargá los PDFs — el sistema los clasifica, empareja y valida automáticamente con IA.</p>
 </div>
-<div class="animated-line"></div>
 """, unsafe_allow_html=True)
 
 tab_revision, tab_criterios = st.tabs(["Revisión", "Criterios normativos"])
@@ -411,10 +394,10 @@ tab_revision, tab_criterios = st.tabs(["Revisión", "Criterios normativos"])
 with tab_criterios:
     st.markdown("""
 <div class="crit-section">
-  <span class="crit-section-title">Documentos de Estado Civil · CABA</span>
+  <span class="crit-section-title">Partidas del Estado Civil · CABA</span>
   <span class="crit-scope-tag">Solo Registro Civil CABA</span>
   <p style="font-size:0.82rem; color:#7A7A85; margin: 0 0 1rem 0; line-height:1.6;">
-    La lógica de vinculación IF + CE aplica exclusivamente a partidas de nacimiento, matrimonio y defunción emitidas por el Registro Civil del Gobierno de la Ciudad Autonoma de Buenos Aires (GCBA). No aplica a documentos de otras provincias ni de otros organismos.
+    La lógica de vinculación IF + CE aplica exclusivamente a partidas de nacimiento, matrimonio y defunción emitidas por el Registro del Estado Civil de la Ciudad de Buenos Aires. No aplica a documentos de otras provincias ni de otros organismos.
   </p>
   <div class="crit-row">
     <span class="crit-badge badge-ok">Aprobado</span>
