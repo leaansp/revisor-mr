@@ -397,7 +397,7 @@ with tab_criterios:
   <span class="crit-section-title">Documentos de Estado Civil · CABA</span>
   <span class="crit-scope-tag">Solo Registro Civil CABA</span>
   <p style="font-size:0.82rem; color:#7A7A85; margin: 0 0 1rem 0; line-height:1.6;">
-    La lógica de vinculación IF + CE aplica exclusivamente a partidas de nacimiento, matrimonio y defunción emitidas por el Registro civil del Gobierno de la Ciudad de Buenos Aires (GCBA). No aplica a documentos de otras provincias ni de otros organismos.
+    La lógica de vinculación IF + CE aplica exclusivamente a partidas de nacimiento, matrimonio y defunción emitidas por el Registro Civil del Gobierno de la Ciudad de Buenos Aires (GCBA). No aplica a documentos de otras provincias ni de otros organismos.
   </p>
   <div class="crit-row">
     <span class="crit-badge badge-ok">Aprobado</span>
