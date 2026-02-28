@@ -3,13 +3,16 @@
 
 """
 REVISOR AUTOMÁTICO DE DOCUMENTOS PARA APOSTILLAS
-Versión 3.3 FINAL – Sistema completamente dinámico (funciona en cualquier año)
+Versión 4.0 – Con lógica de vinculación IF ↔ CE (Partidas de nacimiento GCABA)
 
 MEJORAS EN ESTA VERSIÓN:
+- Detecta automáticamente archivos IF y CE por nombre
+- Vincula cada CE con su IF correspondiente verificando el número referenciado
+- Combina ambos PDFs para análisis unificado con Claude
+- La firma que importa es la del CE (no la del IF)
+- Alerta si falta alguno de los dos archivos del par
 - Fix: Detecta formato "26 de febrero de 2026" correctamente
 - Fix: Prompt 100% dinámico (no hardcoded para ningún año específico)
-- Funciona automáticamente en 2025, 2026, 2027, 2028, etc.
-- Ejemplos de fechas se generan dinámicamente
 """
 
 import os
@@ -21,7 +24,8 @@ from datetime import datetime, timedelta
 import streamlit as st
 import anthropic
 import pandas as pd
-from PyPDF2 import PdfReader
+from PyPDF2 import PdfReader, PdfWriter
+import pdfplumber
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font, Alignment
 
@@ -96,6 +100,114 @@ def verificar_firma_digital(pdf_bytes):
         return {"tiene_firma": None, "cantidad_firmas": 0, "firmantes": []}
 
 # =============================================================================
+# LÓGICA IF ↔ CE
+# =============================================================================
+
+def extraer_clave_if(texto):
+    """
+    Extrae la clave única de un número IF: tupla (año, numero).
+    Ejemplo: "IF-2015-29802485- -DGRC" → ("2015", "29802485")
+    Acepta variantes con espacios extra o guiones entre los segmentos.
+    """
+    match = re.search(r'IF[\s\-_]+(\d{4})[\s\-_]+(\d+)', texto, re.IGNORECASE)
+    if match:
+        return (match.group(1), match.group(2))
+    return None
+
+def extraer_texto_pdf(pdf_bytes):
+    """
+    Extrae texto de un PDF usando pdfplumber con extract_words().
+    extract_words() es mucho más robusto que extract_text() para PDFs de GCABA
+    ya que no pierde líneas por problemas de encoding de fuentes.
+    """
+    try:
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            partes = []
+            for page in pdf.pages:
+                try:
+                    words = page.extract_words()
+                    if words:
+                        partes.append(" ".join(w["text"] for w in words))
+                except:
+                    pass
+            return " ".join(partes)
+    except:
+        return ""
+
+def extraer_if_de_bytes_crudos(pdf_bytes):
+    """
+    Extrae el número IF directamente de los bytes crudos del PDF.
+    Funciona incluso cuando el número está en una imagen escaneada,
+    porque GEDO lo embebe también como texto en el stream interno del PDF.
+    Ejemplo: "IF-2015-29802485- -DGRC" → ("2015", "29802485")
+    """
+    try:
+        raw = pdf_bytes.decode("latin-1", errors="ignore")
+        match = re.search(r'IF[-\s]+(\d{4})[-\s]+(\d+)', raw)
+        if match:
+            return (match.group(1), match.group(2))
+    except:
+        pass
+    return None
+
+def detectar_tipo_por_contenido(pdf_bytes, nombre_archivo=""):
+    """
+    Clasifica el PDF como CE, IF u OTRO leyendo su CONTENIDO.
+
+    CE → se detecta por "CERTIFICO QUE EL PRESENTE DOCUMENTO" (inequívoco)
+         + extrae el número IF referenciado desde el texto seleccionable.
+
+    IF → se detecta por señales de GCABA en el texto.
+         Su número IF se extrae de los bytes crudos del PDF (donde GEDO
+         lo embebe aunque visualmente esté en la imagen escaneada).
+         Esto permite emparejamiento EXACTO con el CE: si los números no
+         coinciden, no se emparejan. Sin fallbacks ciegos.
+
+    OTRO → sin señales reconocibles.
+
+    Retorna: ("CE", clave_if_referenciada, texto_debug)
+           | ("IF", clave_if_propia, texto_debug)   ← clave puede ser None si no se extrae
+           | ("OTRO", None, texto_debug)
+    """
+    texto_raw = extraer_texto_pdf(pdf_bytes)
+    texto_norm = re.sub(' +', ' ', texto_raw.replace('\n', ' ')).strip()
+    texto_upper = texto_norm.upper()
+
+    # ── Es CE: frase inequívoca de GCABA ────────────────────────────────────
+    if "CERTIFICO QUE EL PRESENTE DOCUMENTO" in texto_upper:
+        clave = extraer_clave_if(texto_norm)
+        return ("CE", clave, texto_norm)
+
+    # ── Es IF: señales de GCABA + extracción de número desde bytes crudos ───
+    señales_gcaba = [
+        "GOBIERNO DE LA CIUDAD",
+        "HOJA ADICIONAL DE FIRMAS",
+        "REGISTRO DEL ESTADO CIVIL",
+        "GEDO",
+    ]
+    if any(s in texto_upper for s in señales_gcaba):
+        clave_if = extraer_if_de_bytes_crudos(pdf_bytes)
+        return ("IF", clave_if, texto_norm)
+
+    # ── OTRO ─────────────────────────────────────────────────────────────────
+    return ("OTRO", None, texto_norm)
+
+def combinar_pdfs(pdf_bytes_lista):
+    """Combina múltiples PDFs en uno solo. Retorna los bytes del PDF combinado."""
+    writer = PdfWriter()
+    for pdf_bytes in pdf_bytes_lista:
+        try:
+            reader = PdfReader(io.BytesIO(pdf_bytes))
+            for page in reader.pages:
+                writer.add_page(page)
+        except Exception as e:
+            st.warning(f"Advertencia al combinar PDF: {e}")
+    output = io.BytesIO()
+    writer.write(output)
+    output.seek(0)
+    return output.read()
+
+# =============================================================================
 # UTILIDADES
 # =============================================================================
 
@@ -108,7 +220,6 @@ def calcular_dias_desde_fecha(fecha_str):
     fecha_str = fecha_str.lower()
     meses = {"enero":1,"febrero":2,"marzo":3,"abril":4,"mayo":5,"junio":6,
              "julio":7,"agosto":8,"septiembre":9,"setiembre":9,"octubre":10,"noviembre":11,"diciembre":12}
-    # Acepta: "15 de mayo del 2024", "15 de mayo de 2024", "15 de mayo 2024"
     match = re.search(r'(\d{1,2})\s+de\s+([a-z]+)\s+(?:de(?:l)?\s+)?(\d{4})', fecha_str)
     if match:
         try:
@@ -124,13 +235,12 @@ def calcular_dias_desde_fecha(fecha_str):
     return None
 
 # =============================================================================
-# CLAUDE
+# CLAUDE – Análisis individual
 # =============================================================================
 
 def analizar_con_claude(pdf_bytes):
     client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
     
-    # Contexto temporal completamente dinámico (funciona en cualquier año)
     hoy = datetime.now().strftime('%d/%m/%Y')
     anio_actual = datetime.now().year
     mes_actual = datetime.now().strftime('%B')
@@ -229,6 +339,110 @@ Campos a extraer (JSON válido):
     return json.loads(respuesta)
 
 # =============================================================================
+# CLAUDE – Análisis de PAR IF + CE (PDF combinado)
+# =============================================================================
+
+def analizar_par_if_ce_con_claude(if_bytes, ce_bytes, nombre_if, nombre_ce):
+    """
+    Combina el IF y el CE en un solo PDF y lo envía a Claude para análisis unificado.
+    La firma que importa es la del CE. El IF es el documento original.
+    """
+    client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
+    
+    hoy = datetime.now().strftime('%d/%m/%Y')
+    anio_actual = datetime.now().year
+
+    # Combinar ambos PDFs en uno
+    pdf_combinado = combinar_pdfs([if_bytes, ce_bytes])
+
+    prompt = f"""Estás analizando un PAR de documentos vinculados para apostilla en Cancillería Argentina.
+
+📂 DOCUMENTO 1 (páginas iniciales): Archivo IF – Es el ACTA o documento original (ej: acta de nacimiento).
+📂 DOCUMENTO 2 (páginas siguientes): Archivo CE – Es el CERTIFICADO que avala al IF.
+
+HOY: {hoy} | AÑO ACTUAL: {anio_actual}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔎 TU TAREA PRINCIPAL: Verificar la vinculación IF ↔ CE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+El CE debe contener en su texto la frase:
+"Número/s de documento/s electrónico/s: [número IF]"
+
+El número IF del primer archivo es: {nombre_if}
+
+Verificá si el CE (segundo documento) hace referencia a ese número IF en su texto.
+
+⚠️ IMPORTANTE SOBRE FIRMAS:
+• La firma que IMPORTA para apostilla es la del CE (segundo documento), NO la del IF.
+• El IF puede tener firma ológrafa (manuscrita) o sellos – eso es NORMAL, no es un problema.
+• Evaluá la firma del CE: debe ser digital/electrónica, emitida por GCABA (DGRC).
+
+🖊️ CÓMO EXTRAER EL FIRMANTE DEL CE – Lee con mucha atención:
+Los documentos CE de GCABA tienen un bloque de firma que dice:
+  "Digitally signed by Comunicaciones Oficiales"
+  "Date: YYYY.MM.DD HH:MM:SS"
+  
+  [Nombre Apellido]         ← ESTE es el firmante_ce que querés
+  [Cargo]
+  [Organismo]
+
+• "Comunicaciones Oficiales" NO es el firmante. Es el sistema técnico que certifica.
+• El firmante real es el NOMBRE HUMANO que aparece DEBAJO del bloque "Digitally signed".
+• Ejemplo: si ves "Gonzalo Alvarez / Gerente Operativo / D.G.REG.ESTADO CIVIL..." → firmante_ce = "Gonzalo Alvarez"
+• Puede haber dos bloques "Digitally signed" en el CE (uno arriba y uno abajo). En ambos casos el nombre humano aparece debajo. Tomá el primero que encuentres con nombre legible.
+• Si no encontrás ningún nombre humano → firmante_ce = "No identificado"
+
+Para calidad_imagen - usá SOLO: "alta", "clara", "nítida", "baja", "borrosa" o "ilegible"
+
+Para titular_documento:
+• El nombre completo de la persona del ACTA (IF), ej: "Apolo Luciano Arce Chumbi"
+• Buscá en el documento manuscrito o impreso
+
+Para fecha_emision:
+• Usá la fecha del CE (no la del IF original), porque el CE es el que tiene vigencia actual
+
+Para observacion_redactada:
+• Una sola oración que resuma el par: tipo de acta, titular, si el CE vincula correctamente al IF, y quién firmó el CE.
+• Ejemplo: "Acta de nacimiento de Apolo Luciano Arce Chumbi, CE emitido el 20/02/2026, firmado por Gonzalo Alvarez, referencia IF verificada correctamente."
+
+Respondé SOLO JSON válido:
+{{
+  "tipo_documento": string,
+  "titular_documento": string,
+  "fecha_emision": string,
+  "anio_documento": number,
+  "es_pre_2012": boolean,
+  "firmantes_visibles": [strings],
+  "cantidad_firmas_visibles": number,
+  "multiples_firmas": boolean,
+  "sello_ministerio_visible": boolean,
+  "sello_claro": boolean,
+  "calidad_imagen": "alta"|"clara"|"nítida"|"baja"|"borrosa"|"ilegible",
+  "es_foto_celular": boolean,
+  "ce_referencia_if_correctamente": boolean,
+  "numero_if_encontrado_en_ce": string,
+  "firmante_ce": string,
+  "cargo_firmante_ce": string,
+  "problemas_detectados": [],
+  "observacion_redactada": string
+}}"""
+
+    message = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=2000,
+        messages=[{"role": "user", "content": [
+            {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_a_base64(pdf_combinado)}},
+            {"type": "text", "text": prompt}
+        ]}]
+    )
+
+    respuesta = message.content[0].text.strip()
+    respuesta = re.sub(r'^```json\n?', '', respuesta)
+    respuesta = re.sub(r'\n?```$', '', respuesta)
+    return json.loads(respuesta)
+
+# =============================================================================
 # LÓGICA NORMATIVA
 # =============================================================================
 
@@ -257,7 +471,6 @@ def evaluar_documento(firma_info, analisis):
                 problemas.append(f"No se pudo interpretar la fecha: {fecha}")
             
             elif dias < 0:
-                # Fecha futura - muy raro pero posible si el reloj está mal
                 estado = "⚠️ REVISAR"
                 accion = "Fecha posterior a hoy"
                 problemas.append(f"Fecha futura detectada: {fecha} (verificar si es error de sistema)")
@@ -268,7 +481,6 @@ def evaluar_documento(firma_info, analisis):
                 problemas.append(f"Vencido hace {dias} días (máximo: 90)")
             
             else:
-                # Fecha válida dentro de los 90 días
                 estado = "✅ OK"
                 accion = "Certificado vigente"
 
@@ -284,14 +496,14 @@ def evaluar_documento(firma_info, analisis):
             accion = "No se detecta firma visible"
             problemas.append("Sin firma visible")
 
-    # Múltiples firmas: solo si ambas condiciones son verdaderas
+    # Múltiples firmas
     if analisis.get('multiples_firmas') and firma_info['cantidad_firmas'] > 1:
         if estado == "✅ OK":
             estado = "⚠️ REVISAR"
             accion = "Verificar cuál firma corresponde"
         problemas.append("Múltiples firmas detectadas")
 
-    # Calidad: solo marca si es explícitamente mala
+    # Calidad
     if calidad == "ilegible":
         estado = "❌ RECHAZAR"
         accion = "Imagen ilegible"
@@ -302,13 +514,12 @@ def evaluar_documento(firma_info, analisis):
             accion = "Calidad de imagen insuficiente"
         problemas.append(f"Calidad de imagen: {calidad}")
 
-    # Problemas detectados por Claude
-    # Filtrar problemas relacionados con "fecha futura" o "año 2026" que son falsos positivos
+    # Problemas detectados por Claude (filtrar falsos positivos de fecha)
     problemas_filtrados = []
     for p in problemas_claude:
         p_lower = p.lower()
-        # Ignorar si menciona 2026 o fecha futura como problema
-        if "2026" not in p_lower and "fecha futura" not in p_lower and "fecha posterior" not in p_lower:
+        anio_actual = str(datetime.now().year)
+        if anio_actual not in p_lower and "fecha futura" not in p_lower and "fecha posterior" not in p_lower:
             problemas_filtrados.append(p)
     
     if problemas_filtrados:
@@ -327,17 +538,64 @@ def evaluar_documento(firma_info, analisis):
 
     return estado, accion, problemas
 
-def generar_observacion(analisis, problemas):
-    """Usa la observación redactada por Claude, y si hay problemas del sistema los agrega al final."""
-    obs_base = analisis.get("observacion_redactada") or analisis.get("observaciones") or ""
+def evaluar_par_if_ce(firma_info_ce, analisis_par):
+    """
+    Evalúa el resultado del análisis de un par IF+CE.
+    La firma que importa es la del CE.
+    """
+    estado = "✅ OK"
+    accion = "Par IF+CE válido – Listo para cargar"
+    problemas = []
 
+    # Verificación principal: ¿el CE hace referencia al IF?
+    if not analisis_par.get("ce_referencia_if_correctamente"):
+        estado = "❌ RECHAZAR"
+        accion = "El CE no referencia al IF correspondiente"
+        problemas.append("El CE no contiene el número IF correcto en su texto")
+
+    # Firma del CE
+    if firma_info_ce['tiene_firma'] == False:
+        estado = "❌ RECHAZAR"
+        accion = "CE sin firma digital"
+        problemas.append("El CE no tiene firma digital válida")
+    elif firma_info_ce['tiene_firma'] is None:
+        if estado == "✅ OK":
+            estado = "⚠️ REVISAR"
+            accion = "Firma del CE no detectada automáticamente"
+        problemas.append("No se pudo verificar firma digital del CE automáticamente")
+
+    # Calidad
+    calidad = (analisis_par.get("calidad_imagen") or "").lower()
+    if calidad == "ilegible":
+        estado = "❌ RECHAZAR"
+        accion = "Imagen ilegible"
+        problemas.append("Imagen ilegible")
+    elif calidad in ["baja", "borrosa"]:
+        if estado == "✅ OK":
+            estado = "⚠️ REVISAR"
+            accion = "Calidad de imagen insuficiente"
+        problemas.append(f"Calidad de imagen: {calidad}")
+
+    # Problemas detectados por Claude (filtrar falsos positivos)
+    problemas_claude = analisis_par.get("problemas_detectados") or []
+    anio_actual = str(datetime.now().year)
+    for p in problemas_claude:
+        p_lower = p.lower()
+        if anio_actual not in p_lower and "fecha futura" not in p_lower and "fecha posterior" not in p_lower:
+            if estado == "✅ OK":
+                estado = "⚠️ REVISAR"
+                accion = "Revisar problemas detectados"
+            problemas.append(p)
+
+    return estado, accion, problemas
+
+def generar_observacion(analisis, problemas):
+    obs_base = analisis.get("observacion_redactada") or analisis.get("observaciones") or ""
     if problemas:
-        # Solo agrega problemas del sistema que no estén ya mencionados en la observación de Claude
         extra = "; ".join(problemas)
         if obs_base:
             return f"{obs_base.strip()} — {extra}"
         return extra
-
     return obs_base.strip()
 
 # =============================================================================
@@ -396,35 +654,229 @@ if archivos:
         barra = st.progress(0)
         estado_texto = st.empty()
 
-        for i, archivo in enumerate(archivos):
-            estado_texto.text(f"Analizando {archivo.name}...")
+        # ─────────────────────────────────────────────────────────────────
+        # PASO 1: Clasificar archivos en IF, CE y OTROS leyendo el CONTENIDO
+        # (independiente del nombre del archivo)
+        # ─────────────────────────────────────────────────────────────────
+        archivos_if = {}   # clave_if (año, numero) → {"archivo": ..., "bytes": ..., "nombre": ...}
+        archivos_ce = {}   # nombre → {"archivo": ..., "bytes": ..., "clave_if_ref": ...}
+        archivos_otros = []
+
+        # Panel de debug expandible
+        with st.expander("🔍 Debug: clasificación de archivos (expandí si hay problemas)", expanded=False):
+            debug_placeholder = st.empty()
+            debug_rows = []
+
+        for archivo in archivos:
             pdf_bytes = archivo.read()
+            tipo, clave, texto_extraido = detectar_tipo_por_contenido(pdf_bytes, archivo.name)
 
-            firma_info = verificar_firma_digital(pdf_bytes)
-            analisis = analizar_con_claude(pdf_bytes)
-            estado, accion, problemas = evaluar_documento(firma_info, analisis)
-            observacion = generar_observacion(analisis, problemas)
-
-            tiene_firma = firma_info["tiene_firma"]
-            firma_texto = "SÍ" if tiene_firma else ("NO" if tiene_firma == False else "NO DETECTADA")
-
-            resultados.append({
+            # Info de debug
+            preview = texto_extraido[:300].replace("\n", " ") if texto_extraido else "(sin texto extraíble)"
+            clave_str = f"IF-{clave[0]}-{clave[1]}" if clave else "—"
+            debug_rows.append({
                 "Archivo": archivo.name,
-                "Titular": analisis.get("titular_documento"),
-                "Tipo": analisis.get("tipo_documento"),
-                "Fecha": analisis.get("fecha_emision"),
-                "Año": analisis.get("anio_documento"),
-                "Firma Digital": firma_texto,
-                "Firmantes Certificado": ", ".join(firma_info["firmantes"]),
-                "Firmantes Visibles": ", ".join(analisis.get("firmantes_visibles", [])),
-                "Estado": estado,
-                "Acción": accion,
-                "Observaciones": observacion
+                "Clasificado como": tipo,
+                "Clave IF detectada": clave_str,
+                "Texto extraído (primeros 300 chars)": preview
             })
+            debug_placeholder.dataframe(pd.DataFrame(debug_rows), use_container_width=True)
 
-            barra.progress((i + 1) / len(archivos))
+            if tipo == "IF":
+                archivos_if[clave] = {"archivo": archivo, "bytes": pdf_bytes, "nombre": archivo.name}
+
+            elif tipo == "CE":
+                archivos_ce[archivo.name] = {
+                    "archivo": archivo,
+                    "bytes": pdf_bytes,
+                    "clave_if_ref": clave,
+                    "nombre": archivo.name
+                }
+            else:
+                archivos_otros.append({"archivo": archivo, "bytes": pdf_bytes})
+
+        # ─────────────────────────────────────────────────────────────────
+        # PASO 2: Emparejar CE ↔ IF — solo por coincidencia EXACTA de número
+        # No hay fallbacks ciegos: si los números no coinciden, no se emparejan
+        # ─────────────────────────────────────────────────────────────────
+        pares = []
+        if_usados = set()
+        ce_usados = set()
+
+        for ce_nombre, ce_data in archivos_ce.items():
+            clave_ref = ce_data["clave_if_ref"]
+
+            if clave_ref and clave_ref in archivos_if:
+                # Coincidencia exacta: el CE referencia este IF por número
+                pares.append({
+                    "if": archivos_if[clave_ref],
+                    "ce": ce_data
+                })
+                if_usados.add(clave_ref)
+                ce_usados.add(ce_nombre)
+            else:
+                # Sin coincidencia: CE huérfano (falta el IF o los números no coinciden)
+                ce_usados.add(ce_nombre)
+                archivos_otros.append({
+                    "archivo": ce_data["archivo"],
+                    "bytes": ce_data["bytes"],
+                    "advertencia_ce_sin_if": True,
+                    "clave_if_ref": clave_ref
+                })
+
+        # IFs que no fueron referenciados por ningún CE
+        for clave_if, if_data in archivos_if.items():
+            if clave_if not in if_usados:
+                archivos_otros.append({
+                    "archivo": if_data["archivo"],
+                    "bytes": if_data["bytes"],
+                    "advertencia_if_sin_ce": True
+                })
+
+        total_tareas = len(pares) + len(archivos_otros)
+        tarea_actual = 0
+
+        # ─────────────────────────────────────────────────────────────────
+        # PASO 3: Procesar PARES IF+CE
+        # ─────────────────────────────────────────────────────────────────
+        for par in pares:
+            if_data = par["if"]
+            ce_data = par["ce"]
+            nombre_display = f"{if_data['nombre']} + {ce_data['nombre']}"
+            estado_texto.text(f"Analizando par: {nombre_display}...")
+
+            try:
+                # Firma: solo la del CE importa
+                firma_info_ce = verificar_firma_digital(ce_data["bytes"])
+
+                # Análisis conjunto con Claude (PDF combinado)
+                analisis_par = analizar_par_if_ce_con_claude(
+                    if_data["bytes"],
+                    ce_data["bytes"],
+                    if_data["nombre"],
+                    ce_data["nombre"]
+                )
+
+                estado, accion, problemas = evaluar_par_if_ce(firma_info_ce, analisis_par)
+                observacion = generar_observacion(analisis_par, problemas)
+
+                tiene_firma = firma_info_ce["tiene_firma"]
+                firma_texto = "SÍ" if tiene_firma else ("NO" if tiene_firma == False else "NO DETECTADA")
+
+                firmante_ce = analisis_par.get("firmante_ce", "") or "No identificado"
+                cargo_ce = analisis_par.get("cargo_firmante_ce", "") or ""
+                firmante_display = f"{firmante_ce} ({cargo_ce})" if cargo_ce else firmante_ce
+
+                resultados.append({
+                    "Archivo": nombre_display,
+                    "Tipo trámite": "📎 Par IF+CE",
+                    "Titular": analisis_par.get("titular_documento"),
+                    "Tipo": analisis_par.get("tipo_documento"),
+                    "Fecha CE": analisis_par.get("fecha_emision"),
+                    "CE referencia IF": "✅ SÍ" if analisis_par.get("ce_referencia_if_correctamente") else "❌ NO",
+                    "IF encontrado en CE": analisis_par.get("numero_if_encontrado_en_ce", ""),
+                    "Firmante CE": firmante_display,
+                    "Firma Digital CE": firma_texto,
+                    "Firmantes Certificado": ", ".join(firma_info_ce["firmantes"]),
+                    "Estado": estado,
+                    "Acción": accion,
+                    "Observaciones": observacion
+                })
+
+            except Exception as e:
+                resultados.append({
+                    "Archivo": nombre_display,
+                    "Tipo trámite": "📎 Par IF+CE",
+                    "Titular": "",
+                    "Tipo": "",
+                    "Fecha CE": "",
+                    "CE referencia IF": "",
+                    "IF encontrado en CE": "",
+                    "Firmante CE": "",
+                    "Firma Digital CE": "",
+                    "Firmantes Certificado": "",
+                    "Estado": "⚠️ REVISAR",
+                    "Acción": "Error de análisis",
+                    "Observaciones": f"Error: {str(e)}"
+                })
+
+            tarea_actual += 1
+            barra.progress(tarea_actual / total_tareas)
+
+        # ─────────────────────────────────────────────────────────────────
+        # PASO 4: Procesar archivos individuales (OTROS, IF sin CE, CE sin IF)
+        # ─────────────────────────────────────────────────────────────────
+        for item in archivos_otros:
+            archivo = item["archivo"]
+            pdf_bytes = item["bytes"]
+            estado_texto.text(f"Analizando {archivo.name}...")
+
+            advertencia_extra = ""
+            if item.get("advertencia_if_sin_ce"):
+                advertencia_extra = "⚠️ IF sin CE correspondiente cargado"
+            elif item.get("advertencia_ce_sin_if"):
+                clave_ref = item.get("clave_if_ref")
+                ref_str = f"IF-{clave_ref[0]}-{clave_ref[1]}" if clave_ref else "desconocido"
+                advertencia_extra = f"⚠️ CE sin IF correspondiente (busca: {ref_str})"
+
+            try:
+                firma_info = verificar_firma_digital(pdf_bytes)
+                analisis = analizar_con_claude(pdf_bytes)
+                estado, accion, problemas = evaluar_documento(firma_info, analisis)
+
+                if advertencia_extra:
+                    problemas.append(advertencia_extra)
+                    if estado == "✅ OK":
+                        estado = "⚠️ REVISAR"
+                        accion = advertencia_extra
+
+                observacion = generar_observacion(analisis, problemas)
+
+                tiene_firma = firma_info["tiene_firma"]
+                firma_texto = "SÍ" if tiene_firma else ("NO" if tiene_firma == False else "NO DETECTADA")
+
+                resultados.append({
+                    "Archivo": archivo.name,
+                    "Tipo trámite": "📄 Individual",
+                    "Titular": analisis.get("titular_documento"),
+                    "Tipo": analisis.get("tipo_documento"),
+                    "Fecha CE": analisis.get("fecha_emision"),
+                    "CE referencia IF": "—",
+                    "IF encontrado en CE": "—",
+                    "Firmante CE": "—",
+                    "Firma Digital CE": firma_texto,
+                    "Firmantes Certificado": ", ".join(firma_info["firmantes"]),
+                    "Estado": estado,
+                    "Acción": accion,
+                    "Observaciones": observacion
+                })
+
+            except Exception as e:
+                resultados.append({
+                    "Archivo": archivo.name,
+                    "Tipo trámite": "📄 Individual",
+                    "Titular": "",
+                    "Tipo": "",
+                    "Fecha CE": "",
+                    "CE referencia IF": "—",
+                    "IF encontrado en CE": "—",
+                    "Firmante CE": "—",
+                    "Firma Digital CE": "",
+                    "Firmantes Certificado": "",
+                    "Estado": "⚠️ REVISAR",
+                    "Acción": "Error de análisis",
+                    "Observaciones": f"Error: {str(e)}"
+                })
+
+            tarea_actual += 1
+            barra.progress(tarea_actual / total_tareas)
 
         estado_texto.text("✅ Análisis completado.")
+
+        # Resumen de pares detectados
+        if pares:
+            st.success(f"🔗 {len(pares)} par(es) IF+CE vinculados correctamente.")
+
         df = pd.DataFrame(resultados)
 
         st.subheader("📊 Resultados")
