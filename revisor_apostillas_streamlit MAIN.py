@@ -90,7 +90,15 @@ html, body, [class*="css"] { font-family: 'Geist', sans-serif !important; }
     padding: 3px 10px; border-radius: 100px; margin-bottom: 1rem;
     border: 1px solid rgba(79,142,247,0.2);
 }
-.pill-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); display: inline-block; }
+.pill-dot {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+    display: inline-block;
+    animation: pulse-dot 2s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.4; transform: scale(0.7); }
+}
 
 .main-header { padding: 0 0 2rem 0; border-bottom: 1px solid var(--border); margin-bottom: 2.2rem; }
 .main-header h1 { font-size: 1.75rem; font-weight: 600; color: var(--text); letter-spacing: -0.04em; margin: 0 0 0.35rem 0; line-height: 1.15; }
@@ -140,33 +148,68 @@ html, body, [class*="css"] { font-family: 'Geist', sans-serif !important; }
 }
 
 [data-testid="stFileUploader"] {
-    background: var(--surface) !important;
-    border-radius: 14px !important;
-    padding: 0 !important;
-    overflow: hidden;
-}
-[data-testid="stFileUploaderDropzone"] {
     background: transparent !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+}
+[data-testid="stFileUploader"] label { display: none !important; }
+
+/* Dropzone grande, una sola caja, todo clickeable */
+[data-testid="stFileUploaderDropzone"] {
+    background: var(--surface) !important;
     border: 1.5px dashed rgba(255,255,255,0.09) !important;
     border-radius: 14px !important;
-    padding: 2.2rem 1.5rem !important;
+    padding: 3.5rem 2rem 1.5rem 2rem !important;
     transition: border-color 0.2s ease, background 0.2s ease !important;
-    cursor: pointer;
-    text-align: center;
+    cursor: pointer !important;
+    text-align: center !important;
+    position: relative !important;
+    min-height: 240px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
 }
 [data-testid="stFileUploaderDropzone"]:hover {
     border-color: var(--accent) !important;
-    background: var(--accent-dim) !important;
+    background: rgba(79,142,247,0.05) !important;
 }
+/* Sin ::before — el ícono se inyecta via st.markdown encima del uploader */
 [data-testid="stFileUploaderDropzoneInput"] { cursor: pointer !important; }
-[data-testid="stFileUploaderDropzone"] > div > span { display: none !important; }
-[data-testid="stFileUploaderDropzone"] small {
-    font-size: 11px !important;
-    color: var(--text-muted) !important;
-    letter-spacing: 0.02em;
-    margin-top: 0.3rem;
-    display: block;
+
+/* Ocultar el ícono nativo de nube de Streamlit */
+[data-testid="stFileUploaderDropzone"] > div > div:first-child,
+[data-testid="stFileUploaderDropzone"] svg,
+[data-testid="stFileUploaderDropzone"] img {
+    display: none !important;
 }
+/* El div interno que contiene texto — centrado */
+[data-testid="stFileUploaderDropzone"] > div {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100% !important;
+}
+/* Texto principal "Drag and drop files here" */
+[data-testid="stFileUploaderDropzone"] > div > span {
+    font-family: 'Geist', sans-serif !important;
+    font-size: 0.9rem !important;
+    font-weight: 500 !important;
+    color: #F0F0F2 !important;
+    letter-spacing: -0.01em !important;
+    display: block !important;
+    text-align: center !important;
+}
+/* Subtexto "Limit 200MB per file • PDF" */
+[data-testid="stFileUploaderDropzone"] small {
+    font-size: 0.76rem !important;
+    color: var(--text-muted) !important;
+    display: block !important;
+    margin-top: 0.2rem !important;
+    text-align: center !important;
+}
+/* Botón Browse files */
 [data-testid="stFileUploaderDropzone"] button {
     background: var(--surface2) !important;
     border: 1px solid rgba(255,255,255,0.1) !important;
@@ -175,9 +218,10 @@ html, body, [class*="css"] { font-family: 'Geist', sans-serif !important; }
     font-family: 'Geist', sans-serif !important;
     font-size: 0.8rem !important;
     font-weight: 500 !important;
-    padding: 0.4rem 1rem !important;
-    margin-top: 0.5rem;
+    padding: 0.4rem 1.2rem !important;
+    margin-top: 0.6rem !important;
     transition: all 0.15s ease !important;
+    cursor: pointer !important;
 }
 [data-testid="stFileUploaderDropzone"] button:hover {
     border-color: var(--accent) !important;
@@ -285,7 +329,20 @@ h1, h2, h3, h4 { color: var(--text) !important; }
     margin: 0 0 1rem 0;
     padding-bottom: 0.75rem;
     border-bottom: 1px solid var(--border);
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+.crit-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    flex-shrink: 0;
 }
 .crit-scope-tag {
     display: inline-block;
@@ -348,7 +405,7 @@ with st.sidebar:
         <p class="sidebar-title">Revisor de Apostillas</p>
         <p class="sidebar-sub">Dirección Técnica Consular</p>
         <p style="font-size:10px; color:#48484A; margin: 0.15rem 0 0 0; line-height:1.5;">Ministerio de Relaciones Exteriores, Comercio Internacional y Culto &middot; Cancillería</p>
-        <p style="font-size:11px; color:#3A3A3C; margin: 0.7rem 0 0 0; font-style: italic; letter-spacing:0.01em;">{fecha_bonita}</p>
+        <p style="font-size:11px; color:#7A7A85; margin: 0.7rem 0 0 0; letter-spacing:0.01em;">{fecha_bonita}</p>
     ''', unsafe_allow_html=True)
     st.markdown("---")
 
@@ -365,7 +422,19 @@ with st.sidebar:
         st.markdown('<p style="font-size:12px; color:#34C759;">API Key cargada desde entorno.</p>', unsafe_allow_html=True)
 
     st.markdown("---")
-    st.markdown('<span class="sidebar-label">Cómo funciona</span>', unsafe_allow_html=True)
+    st.markdown('''
+<div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.4rem;">
+    <div style="display:inline-flex; align-items:center; justify-content:center;
+                width:22px; height:22px; border-radius:6px;
+                background:var(--surface2); border:1px solid var(--border); flex-shrink:0;">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="12" cy="12" r="9" stroke="#7A7A85" stroke-width="1.8"/>
+            <path d="M12 8v4M12 16h.01" stroke="#7A7A85" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+    </div>
+    <span class="sidebar-label" style="margin:0;">Cómo funciona</span>
+</div>
+''', unsafe_allow_html=True)
     st.markdown("""
 <p style="font-size:12.5px; line-height:1.7; color:#7A7A85; margin-top:0.4rem;">
 Subí uno o más PDFs. El sistema los clasifica como <strong style="color:#F0F0F2;">IF</strong> (documento original) o <strong style="color:#F0F0F2;">CE</strong> (certificado) y los empareja por número de expediente.<br><br>
@@ -375,7 +444,7 @@ El resultado incluye estado de firma digital, vigencia y observaciones.
 """, unsafe_allow_html=True)
 
     st.markdown("---")
-    st.markdown('<p style="font-size:11px; color:#48484A; margin:0;">Leandro Spinelli · 2026</p>', unsafe_allow_html=True)
+    st.markdown('<p style="font-size:11px; color:#5A5A60; margin:0;">Leandro Spinelli · 2026</p>', unsafe_allow_html=True)
 
 if not CLAUDE_API_KEY:
     st.warning("Ingresá tu API Key en el panel lateral para continuar.")
@@ -384,6 +453,20 @@ if not CLAUDE_API_KEY:
 # ── HEADER PRINCIPAL ─────────────────────────────────────────────────────────
 st.markdown("""
 <div class="main-header">
+    <div style="
+        display: inline-flex; align-items: center; gap: 5px;
+        font-family: 'Geist Mono', monospace; font-size: 9px; font-weight: 500;
+        letter-spacing: 0.08em; text-transform: uppercase;
+        margin-bottom: 0.75rem; flex-wrap: wrap; line-height: 1.8;
+    ">
+        <span style="color:#3D3D42;">Ministerio de Relaciones Exteriores, Comercio Internacional y Culto</span>
+        <span style="color:#4A4A52;">›</span>
+        <span style="color:#3D3D42;">Cancillería</span>
+        <span style="color:#4A4A52;">›</span>
+        <span style="color:#3D3D42;">Dirección General de Asuntos Consulares</span>
+        <span style="color:#4A4A52;">›</span>
+        <span style="color:#A0A0AA; font-weight:600;">Dirección Técnica Consular</span>
+    </div>
     <h1>Revisor Automático de Apostillas</h1>
     <p>Cargá los PDFs — el sistema los clasifica, empareja y valida automáticamente con IA.</p>
 </div>
@@ -394,7 +477,14 @@ tab_revision, tab_criterios = st.tabs(["Revisión", "Criterios normativos"])
 with tab_criterios:
     st.markdown("""
 <div class="crit-section">
-  <span class="crit-section-title">Documentos de Estado Civil · CABA</span>
+  <span class="crit-section-title">
+    <span class="crit-icon">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M9 12h6M9 16h6M7 4H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2h-2M9 4a2 2 0 002 2h2a2 2 0 002-2M9 4a2 2 0 012-2h2a2 2 0 012 2" stroke="#7A7A85" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </span>
+    Documentos de Estado Civil · CABA
+  </span>
   <span class="crit-scope-tag">Solo Registro Civil CABA</span>
   <p style="font-size:0.82rem; color:#7A7A85; margin: 0 0 1rem 0; line-height:1.6;">
     La lógica de vinculación IF + CE aplica exclusivamente a partidas de nacimiento, matrimonio y defunción emitidas por el Registro Civil del Gobierno de la Ciudad de Buenos Aires (GCBA). No aplica a documentos de otras provincias ni de otros organismos.
@@ -430,7 +520,15 @@ with tab_criterios:
 </div>
 
 <div class="crit-section">
-  <span class="crit-section-title">Antecedentes Penales</span>
+  <span class="crit-section-title">
+    <span class="crit-icon">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 3L5 6.5V11c0 4.1 3.1 7.9 7 8.9 3.9-1 7-4.8 7-8.9V6.5L12 3z" stroke="#7A7A85" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M9.5 12l2 2 3.5-3.5" stroke="#7A7A85" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </span>
+    Antecedentes Penales
+  </span>
   <div class="crit-row">
     <span class="crit-badge badge-ok">Aprobado</span>
     <div><span class="crit-text">Emitido hace 90 días o menos</span><p class="crit-note">Fecha calculada automáticamente desde la emisión hasta hoy.</p></div>
@@ -454,7 +552,15 @@ with tab_criterios:
 </div>
 
 <div class="crit-section">
-  <span class="crit-section-title">Títulos y Analíticos</span>
+  <span class="crit-section-title">
+    <span class="crit-icon">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="#7A7A85" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="#7A7A85" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </span>
+    Títulos y Analíticos
+  </span>
   <div class="crit-row">
     <span class="crit-badge badge-ok">Aprobado</span>
     <div><span class="crit-text">Al menos una firma visible detectada</span></div>
@@ -470,7 +576,15 @@ with tab_criterios:
 </div>
 
 <div class="crit-section">
-  <span class="crit-section-title">Criterios generales · Todos los documentos</span>
+  <span class="crit-section-title">
+    <span class="crit-icon">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="12" cy="12" r="9" stroke="#7A7A85" stroke-width="1.6"/>
+        <path d="M8.5 12.5l2.5 2.5 4.5-5" stroke="#7A7A85" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </span>
+    Criterios generales · Todos los documentos
+  </span>
   <div class="crit-row">
     <span class="crit-badge badge-ok">Aprobado</span>
     <div><span class="crit-text">Imagen de calidad alta, clara o nítida</span></div>
@@ -1112,26 +1226,53 @@ def generar_excel(df):
 # =============================================================================
 
 with tab_revision:
+    # Texto encima del uploader
     st.markdown("""
+<div style="text-align: center; margin-bottom: 0.75rem; padding-top: 0.5rem;">
+    <p style="font-size: 0.92rem; font-weight: 500; color: #F0F0F2; margin: 0 0 0.2rem 0; letter-spacing: -0.01em;">
+        Arrastrá los PDFs acá
+    </p>
+    <p style="font-size: 0.78rem; color: #7A7A85; margin: 0;">
+        Podés subir varios archivos a la vez — IF y CE juntos
+    </p>
+</div>
+""", unsafe_allow_html=True)
+
+    # Ícono encima del uploader — elemento independiente, no ligado al padding del dropzone
+    st.markdown("""
+<div style="
+    display: flex; flex-direction: column; align-items: center;
+    margin-bottom: -5rem; position: relative; z-index: 1; pointer-events: none;
+    padding-top: 1.6rem;
+">
     <div style="
-        background: var(--surface);
-        border: 1.5px dashed rgba(255,255,255,0.09);
-        border-radius: 14px;
-        padding: 1.6rem 1.5rem 0.6rem 1.5rem;
-        margin-bottom: -0.5rem;
-        text-align: center;
+        width: 52px; height: 52px; border-radius: 13px;
+        background: rgba(79,142,247,0.1); border: 1px solid rgba(79,142,247,0.2);
+        display: flex; align-items: center; justify-content: center;
     ">
-        <div style="font-size: 1.6rem; margin-bottom: 0.5rem; opacity: 0.4;">&#8686;</div>
-        <p style="font-size: 0.9rem; font-weight: 500; color: #F0F0F2; margin: 0 0 0.2rem 0; letter-spacing: -0.01em;">
-            Arrastrá los PDFs acá
-        </p>
-        <p style="font-size: 0.78rem; color: #7A7A85; margin: 0 0 0.8rem 0;">
-            Podés subir varios archivos a la vez — IF y CE juntos
-        </p>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 15V3M12 3L8 7M12 3L16 7" stroke="#4F8EF7" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M3 15V18C3 19.1046 3.89543 20 5 20H19C20.1046 20 21 19.1046 21 18V15" stroke="#4F8EF7" stroke-width="1.75" stroke-linecap="round"/>
+        </svg>
     </div>
-    """, unsafe_allow_html=True)
+</div>
+""", unsafe_allow_html=True)
 
     archivos = st.file_uploader("PDFs", type=["pdf"], accept_multiple_files=True, label_visibility="collapsed")
+
+    # Renombrar el botón nativo "Browse files" → "Seleccionar archivos"
+    st.markdown("""
+<script>
+(function renameBtn() {
+    const btn = document.querySelector('[data-testid="stFileUploaderDropzone"] button');
+    if (btn && btn.innerText.trim() === "Browse files") {
+        btn.innerText = "Seleccionar archivos";
+    } else {
+        setTimeout(renameBtn, 100);
+    }
+})();
+</script>
+""", unsafe_allow_html=True)
 
     if not archivos:
         st.markdown("""
@@ -1146,13 +1287,17 @@ with tab_revision:
 ">
     <div style="
         width: 52px; height: 52px;
-        border: 1.5px solid rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.07);
         border-radius: 14px;
         display: flex; align-items: center; justify-content: center;
         margin-bottom: 1.1rem;
-        font-size: 1.3rem;
         background: #18181B;
-    ">📂</div>
+    ">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M3 7C3 5.89543 3.89543 5 5 5H9.58579C9.851 5 10.1054 5.10536 10.2929 5.29289L11.7071 6.70711C11.8946 6.89464 12.149 7 12.4142 7H19C20.1046 7 21 7.89543 21 9V17C21 18.1046 20.1046 19 19 19H5C3.89543 19 3 18.1046 3 17V7Z"
+              stroke="#7A7A85" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+    </div>
     <p style="font-size: 0.95rem; font-weight: 500; color: #F0F0F2; margin: 0 0 0.35rem 0; letter-spacing: -0.01em;">
         Ningún documento cargado
     </p>
@@ -1186,7 +1331,54 @@ with tab_revision:
 """, unsafe_allow_html=True)
 
     if archivos:
-        st.info(f"{len(archivos)} archivo(s) cargado(s) · Listo para procesar.")
+        # ── Pre-clasificación para el contador ───────────────────────────────
+        _preview_if = {}
+        _preview_ce = {}
+        _preview_otros = 0
+
+        for _a in archivos:
+            _bytes = _a.read()
+            _a.seek(0)  # reset para que el análisis pueda releerlo después
+            _tipo, _clave, _ = detectar_tipo_por_contenido(_bytes, _a.name)
+            if _tipo == "IF":
+                _preview_if[_clave] = True
+            elif _tipo == "CE":
+                _preview_ce[_a.name] = _clave
+            else:
+                _preview_otros += 1
+
+        # Calcular pares y huérfanos
+        _pares_count = sum(1 for clave in _preview_ce.values() if clave in _preview_if)
+        _huerfanos_ce = sum(1 for clave in _preview_ce.values() if clave not in _preview_if)
+        _huerfanos_if = sum(1 for clave in _preview_if if clave not in _preview_ce.values())
+        _individuales = _preview_otros + _huerfanos_ce + _huerfanos_if
+
+        # ── Tarjeta de resumen pre-análisis ──────────────────────────────────
+        partes_contador = []
+        if _pares_count:
+            partes_contador.append(f'<span style="color:#4F8EF7; font-weight:600;">{_pares_count} par{"es" if _pares_count != 1 else ""} IF+CE</span>')
+        if _individuales:
+            partes_contador.append(f'<span style="color:#B0B0BA; font-weight:500;">{_individuales} individual{"es" if _individuales != 1 else ""}</span>')
+
+        separador = '<span style="color:#3A3A3C; margin: 0 0.4rem;">·</span>'
+        resumen_html = separador.join(partes_contador) if partes_contador else ""
+
+        st.markdown(f"""
+<div style="
+    display: flex; align-items: center; justify-content: space-between;
+    background: #18181B; border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 10px; padding: 0.75rem 1.1rem; margin: 0.8rem 0 0.6rem 0;
+">
+    <div style="display:flex; align-items:center; gap: 0.6rem;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M9 12h6M9 16h6M7 4H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2h-2M9 4a2 2 0 002 2h2a2 2 0 002-2M9 4a2 2 0 012-2h2a2 2 0 012 2"
+              stroke="#7A7A85" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span style="font-size:0.82rem; color:#7A7A85;">{len(archivos)} archivo{"s" if len(archivos) != 1 else ""} detectado{"s" if len(archivos) != 1 else ""}</span>
+    </div>
+    <div style="font-size:0.82rem;">{resumen_html}</div>
+</div>
+""", unsafe_allow_html=True)
 
         if st.button("Analizar documentos", type="primary"):
             resultados = []
