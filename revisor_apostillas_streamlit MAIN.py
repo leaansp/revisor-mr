@@ -28,6 +28,8 @@ from PyPDF2 import PdfReader, PdfWriter
 import pdfplumber
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font, Alignment
+from pdf2image import convert_from_bytes
+import numpy as np
 
 st.set_page_config(page_title="Revisor de Apostillas", page_icon="📄", layout="wide")
 
@@ -429,7 +431,8 @@ with st.sidebar:
                 background:var(--surface2); border:1px solid var(--border); flex-shrink:0;">
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <circle cx="12" cy="12" r="9" stroke="#7A7A85" stroke-width="1.8"/>
-            <path d="M12 8v4M12 16h.01" stroke="#7A7A85" stroke-width="1.8" stroke-linecap="round"/>
+            <path d="M9.5 9.5a2.5 2.5 0 015 .5c0 1.5-2.5 2-2.5 3.5" stroke="#7A7A85" stroke-width="1.8" stroke-linecap="round"/>
+            <circle cx="12" cy="16.5" r="0.75" fill="#7A7A85"/>
         </svg>
     </div>
     <span class="sidebar-label" style="margin:0;">Cómo funciona</span>
@@ -465,7 +468,7 @@ st.markdown("""
         <span style="color:#4A4A52;">›</span>
         <span style="color:#3D3D42;">Dirección General de Asuntos Consulares</span>
         <span style="color:#4A4A52;">›</span>
-        <span style="color:#A0A0AA; font-weight:600;">Dirección Técnica Consular</span>
+        <span style="color:#A0A0AA; font-weight:600; font-size:10.5px;">Dirección Técnica Consular</span>
     </div>
     <h1>Revisor Automático de Apostillas</h1>
     <p>Cargá los PDFs — el sistema los clasifica, empareja y valida automáticamente con IA.</p>
@@ -559,11 +562,24 @@ with tab_criterios:
         <path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="#7A7A85" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </span>
-    Títulos y Analíticos
+    Documentos Educativos · Títulos, Analíticos e Intervención Ministerial
   </span>
+  <p style="font-size:0.82rem; color:#7A7A85; margin: 0 0 1rem 0; line-height:1.6;">
+    Todo documento educativo (título, analítico, certificado de materias, diploma, historia académica, constancia de estudios, etc.) requiere firma visible de la autoridad educativa <strong style="color:#B0B0BA;">y</strong> la intervención de un funcionario ministerial habilitado. El organismo habilitado depende del año del documento.
+  </p>
   <div class="crit-row">
     <span class="crit-badge badge-ok">Aprobado</span>
-    <div><span class="crit-text">Al menos una firma visible detectada</span></div>
+    <div>
+      <span class="crit-text">Documento posterior a 2012 · Sello del Ministerio de Educación confirmado</span>
+      <p class="crit-note">Incluye: Ministerio de Capital Humano, Ministerio de Educación e Innovación (CABA), GCBA Legalizaciones — Ministerio de Educación, Dirección General de Cultura y Educación (PBA), DiNIECE.</p>
+    </div>
+  </div>
+  <div class="crit-row">
+    <span class="crit-badge badge-ok">Aprobado</span>
+    <div>
+      <span class="crit-text">Documento anterior a 2012 · Sello del Ministerio del Interior confirmado</span>
+      <p class="crit-note">Para documentos emitidos antes de 2012, el organismo habilitado para legalizar documentos educativos era el Ministerio del Interior, no el de Educación.</p>
+    </div>
   </div>
   <div class="crit-row">
     <span class="crit-badge badge-warn">Revisar</span>
@@ -572,6 +588,27 @@ with tab_criterios:
   <div class="crit-row">
     <span class="crit-badge badge-warn">Revisar</span>
     <div><span class="crit-text">Múltiples firmas con ambigüedad sobre cuál aplica</span></div>
+  </div>
+  <div class="crit-row">
+    <span class="crit-badge badge-warn">Revisar</span>
+    <div>
+      <span class="crit-text">Sello ministerial presente pero borroso, comprimido o ilegible</span>
+      <p class="crit-note">El sello existe visualmente pero no pudo leerse con certeza. Causas frecuentes: PDF enviado por WhatsApp, escaneado de baja calidad, o múltiples sellos superpuestos.</p>
+    </div>
+  </div>
+  <div class="crit-row">
+    <span class="crit-badge badge-warn">Revisar</span>
+    <div>
+      <span class="crit-text">Documento anterior a 2012 · Sello del Ministerio del Interior presente pero firmante no identificado</span>
+      <p class="crit-note">El sistema detectó el sello pero no pudo leer el nombre del funcionario habilitado. Verificar manualmente que corresponda al Ministerio del Interior.</p>
+    </div>
+  </div>
+  <div class="crit-row">
+    <span class="crit-badge badge-danger">Rechazar</span>
+    <div>
+      <span class="crit-text">Solo firma de autoridad educativa, sin sello ministerial · Imagen nítida</span>
+      <p class="crit-note">El sistema confirmó con certeza que no hay intervención ministerial: imagen clara y los únicos firmantes son rector, decano, director o secretario académico.</p>
+    </div>
   </div>
 </div>
 
@@ -697,6 +734,25 @@ def extraer_texto_pdf(pdf_bytes):
             return " ".join(partes)
     except:
         return ""
+
+def detectar_sello_violeta(pdf_bytes):
+    """
+    Renderiza las páginas del PDF como imágenes y detecta píxeles violetas/morados.
+    El sello rectangular de GCBA Legalizaciones es de tinta violeta/púrpura.
+    Retorna True si detecta suficientes píxeles de ese color en cualquier página.
+    """
+    try:
+        pages = convert_from_bytes(pdf_bytes, dpi=100)
+        for page in pages:
+            arr = np.array(page)
+            r, g, b = arr[:,:,0].astype(int), arr[:,:,1].astype(int), arr[:,:,2].astype(int)
+            # Violeta/morado: azul y rojo dominantes, verde bajo
+            mask = (r > 60) & (r < 220) & (g < 130) & (b > 120) & (b > r) & (b > g + 40)
+            if mask.sum() > 300:  # umbral: cluster significativo, no ruido
+                return True
+    except Exception:
+        pass
+    return False
 
 def extraer_if_de_bytes_crudos(pdf_bytes):
     """
@@ -884,8 +940,67 @@ Para titular_documento:
 • Buscá el nombre en TODO el documento, incluso manuscrito o en anotaciones marginales
 • En acta de nacimiento: nombre del nacido (ej: "Joel Lautaro Sueldo")
 • En antecedente penal: nombre del solicitante
-• En título: nombre del graduado
+• En título o certificado educativo: nombre del alumno/graduado
 • Campo OBLIGATORIO, nunca vacío si el nombre aparece
+
+Para firmantes_visibles:
+• Listá TODOS los firmantes que aparecen en CUALQUIER PÁGINA del documento
+• Incluí firmantes de sellos ministeriales, no solo de la autoridad educativa
+• Ejemplos: ["Prof. Liliana Villena - Rectora", "Maria Alejandra Gutierrez - Legalizaciones GCBA"]
+• Si en un sello dice el nombre del firmante, incluilo aunque sea del sello ministerial
+• NUNCA dejes esta lista vacía si hay firmas o nombres en el documento
+
+🎓 DOCUMENTOS EDUCATIVOS — Regla de intervención ministerial:
+Si el documento es educativo (título, analítico, certificado de materias, diploma, boletín, historia académica, constancia de estudios, etc.):
+
+⚠️ REVISÁ TODAS LAS PÁGINAS DEL PDF ANTES DE RESPONDER — el sello ministerial puede estar en la última página, dorso, o hoja anexa. NO concluyas que no hay sello hasta haber revisado absolutamente todas las páginas.
+
+ORGANISMOS QUE CONSTITUYEN INTERVENCIÓN VÁLIDA:
+✅ Ministerio de Educación (nacional o provincial o CABA)
+✅ Ministerio de Capital Humano (reemplazó al de Educación a nivel nacional)
+✅ Ministerio de Educación e Innovación (CABA)
+✅ GOBIERNO DE LA CIUDAD DE BUENOS AIRES — LEGALIZACIONES (sello morado/violeta/púrpura con fecha, firmado por funcionario del Ministerio de Educación GCBA).
+   IMPORTANTE: Este sello aparece en la SEGUNDA PÁGINA o hoja separada. Es un rectángulo de tinta morada/violeta que dice "GOBIERNO DE LA CIUDAD DE BUENOS AIRES / LEGALIZACIONES" con una fecha y firma manuscrita. Si ves cualquier rectángulo violeta/morado con texto de GCBA y una firma → es intervención válida. Aunque esté borroso → "intervencion_sello_presente_borroso": true, NO "tiene_intervencion_ministerial": false.
+✅ Dirección General de Cultura y Educación (Provincia de Buenos Aires)
+✅ DiNIECE, Secretaría de Educación, o cualquier repartición nacional/provincial con competencia en legalización educativa
+✅ Ministerio del Interior (SOLO para documentos emitidos ANTES del año 2012 — en esa época era el órgano habilitado para legalizar docs educativos)
+
+❌ ORGANISMOS QUE NO SON INTERVENCIÓN VÁLIDA PARA LEGALIZACIÓN EDUCATIVA:
+❌ Ministerio de Relaciones Exteriores y Culto / Cancillería — ese sello es de APOSTILLA, no de legalización educativa. NO cuenta como intervención ministerial educativa.
+❌ Consulado General de Chile u otro consulado extranjero — tampoco cuenta.
+❌ Cualquier sello de la propia institución educativa (rector, director, secretario, decano).
+
+Para documentos PRE-2012: el ÚNICO organismo válido es el Ministerio del Interior. Si ves sello de Cancillería/RR.EE. en un doc pre-2012 → NO es intervención válida, no marques true.
+
+DOCUMENTOS PRE-2012:
+• Si el documento fue emitido ANTES del año 2012, la intervención válida era del Ministerio del Interior.
+• NO importa si el documento tiene materias adeudadas, promedios bajos, o cualquier contenido académico — eso NO es un problema documental.
+• Si un documento pre-2012 solo tiene firma educativa sin Ministerio del Interior → "tiene_intervencion_ministerial": false
+• Si un documento pre-2012 tiene sello del Ministerio del Interior → "tiene_intervencion_ministerial": true
+• Si un documento pre-2012 tiene sello del Ministerio del Interior pero está borroso/confuso → null + borroso: true
+
+IMPORTANTE — Múltiples sellos y firmas (documentos complejos):
+• Si el documento tiene muchos sellos, firmas superpuestas, o es difícil identificar claramente de qué organismo es cada sello → "multiples_firmas": true, "intervencion_sello_presente_borroso": true
+• En esos casos NO asumas que está aprobado — mandá a revisión manual.
+
+IMPORTANTE — Sello borroso o parcialmente legible:
+• Si hay un sello que parece ser ministerial pero está borroso, parcialmente legible, poco claro, o con muchos sellos superpuestos → "tiene_intervencion_ministerial": null, "intervencion_sello_presente_borroso": true
+• NO marques false si hay un sello visible aunque sea difícil de leer. False es SOLO cuando claramente no hay NINGÚN sello ministerial en ninguna página.
+
+REGLAS:
+• Si SOLO tiene firma de la autoridad educativa (rector, decano, director, secretario académico) sin ningún sello ministerial en ninguna página → "tiene_intervencion_ministerial": false
+• Si tiene sello/firma ministerial clara en cualquier página → "tiene_intervencion_ministerial": true
+• Si el sello está presente pero borroso/parcial/confuso → "tiene_intervencion_ministerial": null + "intervencion_sello_presente_borroso": true
+• Si el documento NO es educativo → "tiene_intervencion_ministerial": null
+
+Para es_documento_educativo:
+• true si es título, analítico, certificado académico, diploma, boletín de notas, historia académica, certificado de materias, constancia de estudios, etc.
+• false para cualquier otro tipo de documento
+
+Para nota_intervencion:
+• Si el documento es pre-2012 y necesita Ministerio del Interior, explicalo aquí
+• Si el sello está borroso, describí lo que se ve
+• En cualquier otro caso, dejá vacío ""
 
 Campos a extraer (JSON válido):
 {{
@@ -899,6 +1014,10 @@ Campos a extraer (JSON válido):
   "multiples_firmas": boolean,
   "sello_ministerio_visible": boolean,
   "sello_claro": boolean,
+  "es_documento_educativo": boolean,
+  "tiene_intervencion_ministerial": boolean|null,
+  "intervencion_sello_presente_borroso": boolean,
+  "nota_intervencion": string,
   "calidad_imagen": "alta"|"clara"|"nítida"|"baja"|"borrosa"|"ilegible",
   "es_foto_celular": boolean,
   "problemas_detectados": [strings vacía si todo OK],
@@ -914,9 +1033,15 @@ Campos a extraer (JSON válido):
         ]}]
     )
 
-    respuesta = message.content[0].text.strip()
+    respuesta = message.content[0].text.strip() if message.content else ""
     respuesta = re.sub(r'^```json\n?', '', respuesta)
     respuesta = re.sub(r'\n?```$', '', respuesta)
+    # Si Claude envolvió el JSON en texto, extraer solo el objeto
+    match_json = re.search(r'\{[\s\S]*\}', respuesta)
+    if match_json:
+        respuesta = match_json.group(0)
+    if not respuesta:
+        raise ValueError("Respuesta vacía de Claude. Reintentá o revisá el PDF manualmente.")
     return json.loads(respuesta)
 
 # =============================================================================
@@ -1027,7 +1152,7 @@ Respondé SOLO JSON válido:
 # LÓGICA NORMATIVA
 # =============================================================================
 
-def evaluar_documento(firma_info, analisis):
+def evaluar_documento(firma_info, analisis, sello_violeta=False):
     tipo = (analisis.get('tipo_documento') or "").lower()
     estado = "✅ OK"
     accion = "Listo para cargar"
@@ -1070,19 +1195,196 @@ def evaluar_documento(firma_info, analisis):
             accion = "Falta firma digital"
             problemas.append("No se detectó firma digital")
 
-    # Títulos y analíticos
-    if "título" in tipo or "analítico" in tipo:
+    # Títulos, analíticos y documentos educativos en general
+    es_educativo = analisis.get('es_documento_educativo', False)
+    tiene_intervencion = analisis.get('tiene_intervencion_ministerial', None)
+    sello_borroso = analisis.get('intervencion_sello_presente_borroso', False)
+    nota_intervencion = analisis.get('nota_intervencion', '')
+    es_pre_2012 = analisis.get('es_pre_2012', False)
+
+    # Detectar por tipo también, como fallback
+    palabras_educativas = ["título", "analítico", "certificado académico", "diploma",
+                           "historia académica", "boletín", "materias", "carrera",
+                           "universidad", "facultad", "escuela", "colegio", "licenciado",
+                           "licenciatura", "ingeniero", "ingeniería", "bachiller", "tecnicatura",
+                           "constancia de estudios", "certificado de estudios", "estudios parciales"]
+    if any(p in tipo for p in palabras_educativas):
+        es_educativo = True
+
+    if es_educativo:
         if analisis.get('cantidad_firmas_visibles', 0) == 0:
-            estado = "⚠️ REVISAR"
-            accion = "No se detecta firma visible"
+            if estado == "✅ OK":
+                estado = "⚠️ REVISAR"
+                accion = "No se detecta firma visible"
             problemas.append("Sin firma visible")
 
-    # Múltiples firmas
-    if analisis.get('multiples_firmas') and firma_info['cantidad_firmas'] > 1:
+        # Verificar calidad de la detección cuando tiene_intervencion == True
+        if tiene_intervencion == True:
+            firmantes = [f.lower() for f in (analisis.get('firmantes_visibles') or [])]
+            obs = (analisis.get('observacion_redactada') or '').lower()
+            nota = (analisis.get('nota_intervencion') or '').lower()
+            texto_combinado = ' '.join(firmantes) + ' ' + obs + ' ' + nota
+
+            palabras_ministeriales = [
+                'ministerio', 'legalizaciones', 'gcba', 'capital humano',
+                'interior', 'dirección general de cultura', 'dgcye', 'diNIECE'
+            ]
+            palabras_no_validas = [
+                'relaciones exteriores', 'cancillería', 'cancilleria',
+                'consulado', 'consul adjunto', 'belluomini'
+            ]
+            # Palabras de encabezado institucional del documento (no sello de legalización)
+            solo_encabezado = (
+                'ministerio de educaci' in texto_combinado and
+                not any(p in texto_combinado for p in ['legalizaciones', 'interior', 'certif', 'sello'])
+            )
+
+            tiene_firmante_ministerial = any(p in texto_combinado for p in palabras_ministeriales)
+            solo_rree = (
+                any(p in texto_combinado for p in palabras_no_validas) and
+                'ministerio del interior' not in texto_combinado and
+                'legalizaciones' not in texto_combinado
+            )
+
+            if solo_rree:
+                # RR.EE./Cancillería es apostilla, no legalización educativa
+                tiene_intervencion = None
+                sello_borroso = True
+                problemas.append(
+                    "El sello de Cancillería/Ministerio de RR.EE. es de apostilla, "
+                    "NO de legalización educativa. "
+                    + ("Para documentos pre-2012 se requiere sello del Ministerio del Interior."
+                       if es_pre_2012 else
+                       "Se requiere sello del Ministerio de Educación o GCBA Legalizaciones.")
+                    + " Verificar manualmente."
+                )
+            elif solo_encabezado and not tiene_firmante_ministerial:
+                # Claude leyó el encabezado del documento, no un sello real de legalización
+                tiene_intervencion = None
+                sello_borroso = True
+                problemas.append(
+                    "No se identificó firmante de organismo ministerial habilitado. "
+                    "El texto 'Ministerio de Educación' detectado parece ser el encabezado "
+                    "del certificado, no un sello de legalización. Verificar manualmente."
+                )
+            elif es_pre_2012 and analisis.get('multiples_firmas'):
+                # Pre-2012 con múltiples sellos mezclados → siempre REVISAR
+                tiene_intervencion = None
+                sello_borroso = True
+                problemas.append(
+                    "Documento pre-2012 con múltiples sellos y firmas. "
+                    "Verificar manualmente que el sello del Ministerio del Interior "
+                    "esté presente y sea legible."
+                )
+
+        # Sello violeta detectado por análisis de color
+        # Se verifica siempre — incluso si Claude dijo true, puede haber confundido
+        # el encabezado impreso del documento con un sello real de legalización
+        if sello_violeta:
+            firmantes = [f.lower() for f in (analisis.get('firmantes_visibles') or [])]
+            palabras_edu = ['rector', 'rectora', 'director', 'directora', 'secretario',
+                           'secretaria', 'decano', 'decana', 'vicerector', 'vicedirector']
+            palabras_min = ['ministerio', 'legalizaciones', 'gcba', 'interior',
+                           'capital humano', 'educacion']
+            solo_edu = (
+                any(p in ' '.join(firmantes) for p in palabras_edu) and
+                not any(p in ' '.join(firmantes) for p in palabras_min)
+            )
+            if tiene_intervencion != True:
+                # Claude no confirmó → marcar borroso
+                sello_borroso = True
+                if "sello violeta" not in " ".join(problemas).lower():
+                    problemas.append(
+                        "Sello violeta/morado detectado en el PDF (posible sello ministerial GCBA). "
+                        "No fue confirmado automáticamente — verificar manualmente."
+                    )
+            elif solo_edu:
+                # Claude dijo true pero solo hay firmantes educativos → encabezado confundido con sello
+                tiene_intervencion = None
+                sello_borroso = True
+                if "sello violeta" not in " ".join(problemas).lower():
+                    problemas.append(
+                        "Sello violeta/morado detectado pero solo se identificaron autoridades educativas "
+                        "como firmantes. Posible confusión entre encabezado del documento y sello ministerial "
+                        "real — verificar manualmente que exista intervención de GCBA Legalizaciones."
+                    )
+
+        # Sello presente pero borroso → REVISAR (no rechazar)
+        if sello_borroso or tiene_intervencion is None:
+            if estado == "✅ OK":
+                estado = "⚠️ REVISAR"
+                accion = "Verificar sello ministerial manualmente"
+            if sello_borroso:
+                msg = "Sello ministerial presente pero borroso o parcialmente legible — verificar manualmente."
+                if nota_intervencion:
+                    msg += f" {nota_intervencion}"
+                problemas.append(msg)
+            elif es_pre_2012 and nota_intervencion:
+                estado = "⚠️ REVISAR"
+                accion = "Requiere verificación de intervención ministerial"
+                problemas.append(nota_intervencion)
+
+        # Sin intervención detectada:
+        # Si calidad buena (Claude vio bien y no hay sello) → RECHAZAR
+        # Si calidad mala/borrosa (imagen comprimida, sello puede ser invisible) → REVISAR
+        elif tiene_intervencion == False:
+            calidad_ok = calidad in ["alta", "clara", "nítida"]
+
+            if analisis.get('sello_ministerio_visible'):
+                # Claude vio algo pero no lo confirmó — siempre REVISAR
+                estado = "⚠️ REVISAR"
+                accion = "Sello ministerial detectado — confirmar manualmente"
+                problemas.append(
+                    "Se detectó un sello que podría ser ministerial pero no fue confirmado. "
+                    "Verificar manualmente si corresponde al Ministerio de Educación o habilitado."
+                )
+            elif calidad_ok:
+                # Imagen nítida y Claude no vio nada → RECHAZAR con confianza
+                estado = "❌ RECHAZAR"
+                if es_pre_2012:
+                    accion = "Falta intervención del Ministerio del Interior"
+                    problemas.append(
+                        "Documento educativo anterior a 2012. "
+                        "Requiere intervención del Ministerio del Interior. "
+                        "La firma de la autoridad educativa no es suficiente para apostillar."
+                    )
+                else:
+                    accion = "Falta intervención del Ministerio de Educación"
+                    problemas.append(
+                        "El documento solo tiene firma de la autoridad educativa. "
+                        "Para apostillar es obligatoria la intervención del Ministerio de "
+                        "Educación, Capital Humano, o GCBA Legalizaciones."
+                    )
+            else:
+                # Imagen baja/borrosa — no confiar en la no-detección → REVISAR
+                estado = "⚠️ REVISAR"
+                if es_pre_2012:
+                    accion = "Verificar sello del Ministerio del Interior"
+                    problemas.append(
+                        "Documento educativo anterior a 2012. Requiere sello del Ministerio del Interior. "
+                        "No se detectó automáticamente — verificar manualmente (imagen de baja calidad, "
+                        "el sello puede estar borroso o invisible por compresión)."
+                    )
+                else:
+                    accion = "Verificar sello del Ministerio de Educación"
+                    problemas.append(
+                        "No se detectó sello ministerial — imagen de baja calidad o comprimida. "
+                        "Verificar manualmente que tenga intervención del Ministerio de Educación, "
+                        "Capital Humano, o GCBA Legalizaciones (sellos violetas pueden no detectarse)."
+                    )
+    elif "título" in tipo or "analítico" in tipo:
+        if analisis.get('cantidad_firmas_visibles', 0) == 0:
+            if estado == "✅ OK":
+                estado = "⚠️ REVISAR"
+                accion = "No se detecta firma visible"
+            problemas.append("Sin firma visible")
+
+    # Múltiples firmas — para docs físicos se basa en lo que Claude detectó
+    if analisis.get('multiples_firmas'):
         if estado == "✅ OK":
             estado = "⚠️ REVISAR"
-            accion = "Verificar cuál firma corresponde"
-        problemas.append("Múltiples firmas detectadas")
+            accion = "Múltiples sellos/firmas — verificar manualmente"
+        problemas.append("Múltiples firmas o sellos detectados — verificar cuál corresponde")
 
     # Calidad
     if calidad == "ilegible":
@@ -1475,6 +1777,7 @@ with tab_revision:
                 ce_data = par["ce"]
                 nombre_display = f"{if_data['nombre']} + {ce_data['nombre']}"
                 estado_texto.text(f"Analizando par: {nombre_display}...")
+                barra.progress(tarea_actual / total_tareas if total_tareas else 1)
 
                 try:
                     # Firma: solo la del CE importa
@@ -1532,7 +1835,6 @@ with tab_revision:
                     })
 
                 tarea_actual += 1
-                barra.progress(tarea_actual / total_tareas)
 
             # ─────────────────────────────────────────────────────────────────
             # PASO 4: Procesar archivos individuales (OTROS, IF sin CE, CE sin IF)
@@ -1541,6 +1843,7 @@ with tab_revision:
                 archivo = item["archivo"]
                 pdf_bytes = item["bytes"]
                 estado_texto.text(f"Analizando {archivo.name}...")
+                barra.progress(tarea_actual / total_tareas if total_tareas else 1)
 
                 advertencia_extra = ""
                 if item.get("advertencia_if_sin_ce"):
@@ -1553,7 +1856,8 @@ with tab_revision:
                 try:
                     firma_info = verificar_firma_digital(pdf_bytes)
                     analisis = analizar_con_claude(pdf_bytes)
-                    estado, accion, problemas = evaluar_documento(firma_info, analisis)
+                    sello_violeta = detectar_sello_violeta(pdf_bytes)
+                    estado, accion, problemas = evaluar_documento(firma_info, analisis, sello_violeta)
 
                     if advertencia_extra:
                         problemas.append(advertencia_extra)
@@ -1576,7 +1880,25 @@ with tab_revision:
                         "IF encontrado en CE": "—",
                         "Firmante CE": "—",
                         "Firma Digital CE": firma_texto,
-                        "Firmantes Certificado": ", ".join(firma_info["firmantes"]),
+                        "Firmantes Certificado": ", ".join(
+                            # Para docs educativos: priorizar firmante ministerial educativo
+                            # Excluir Cancillería/RR.EE. que es apostilla, no legalización
+                            (lambda fv, fi: (
+                                [f for f in fv if any(p in f.lower() for p in
+                                    ["ministerio de educacion","ministerio educacion","capital humano",
+                                     "legalizaciones","gcba","ministerio del interior","interior y trans"])
+                                and not any(x in f.lower() for x in
+                                    ["relaciones exteriores","cancillería","cancilleria","consulado"])]
+                                or [f for f in fv if any(p in f.lower() for p in
+                                    ["ministerio","legalizaciones","gcba","interior"])
+                                and not any(x in f.lower() for x in
+                                    ["relaciones exteriores","cancillería","cancilleria"])]
+                                or fv or fi or []
+                            ))(
+                                analisis.get("firmantes_visibles") or [],
+                                firma_info["firmantes"] or []
+                            )
+                        ),
                         "Estado": estado,
                         "Acción": accion,
                         "Observaciones": observacion
@@ -1600,9 +1922,9 @@ with tab_revision:
                     })
 
                 tarea_actual += 1
-                barra.progress(tarea_actual / total_tareas)
 
-            estado_texto.text("Análisis completado.")
+            barra.progress(1.0)
+            estado_texto.text("✓ Análisis completado.")
 
             # Resumen de pares detectados
             if pares:
